@@ -3,6 +3,7 @@
 // src/server.js is the only place that listens.
 const express = require('express');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 const pool = require('./config/database');
 
 const app = express();
@@ -21,6 +22,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/admin', adminRoutes);
 
 // Central error handler: keeps stack traces out of API responses.
 app.use((err, req, res, next) => {

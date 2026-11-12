@@ -42,6 +42,25 @@ async function runMigrations(pool) {
     )
   `);
 
+  // Where mail goes while SMTP is not configured. The mailer's file outbox is
+  // useless on a hosted instance: the disk is wiped on every restart, so an OTP
+  // written at registration would be gone before anyone could read it. Rows
+  // here survive, and the admin page shows them.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mail_outbox (
+      id SERIAL PRIMARY KEY,
+      to_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS mail_outbox_created_at_idx
+      ON mail_outbox (created_at DESC)
+  `);
+
   // Bumped whenever the password changes; outstanding reset tokens carry the
   // old version and are rejected (single-use reset links). App tokens carry it
   // too, so a password change also logs out other devices.

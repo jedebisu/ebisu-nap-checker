@@ -16,7 +16,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await pool.query('TRUNCATE users, otp_codes, invite_codes RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE users, otp_codes, invite_codes, mail_outbox RESTART IDENTITY CASCADE');
 });
 
 afterAll(async () => {
@@ -85,5 +85,38 @@ test('generated invite code works end-to-end with register', async () => {
 test('invite-code API refuses requests without the cookie', async () => {
   process.env.ADMIN_PASSWORD = 'admin-pass-123';
   const res = await request(app).get('/admin/api/invite-codes');
+  expect(res.status).toBe(401);
+});
+
+test('the outbox page shows the verification code written during registration', async () => {
+  const cookie = await adminCookie();
+  const gen = await request(app)
+    .post('/admin/api/invite-codes')
+    .set('Cookie', cookie)
+    .send({ max_uses: 1 });
+
+  const reg = await request(app).post('/api/auth/register').send({
+    first_name: 'Nilo',
+    last_name: 'Reyes',
+    email: 'nilo@test.com',
+    phone: '09170000006',
+    invite_code: gen.body.code,
+  });
+  expect(reg.status).toBe(201);
+
+  const json = await request(app).get('/admin/api/outbox').set('Cookie', cookie);
+  expect(json.status).toBe(200);
+  const message = json.body.messages[0];
+  expect(message.to).toBe('nilo@test.com');
+  expect(message.body).toMatch(/\b\d{6}\b/);
+
+  const html = await request(app).get('/admin/outbox').set('Cookie', cookie);
+  expect(html.status).toBe(200);
+  expect(html.text).toMatch(/nilo@test\.com/);
+});
+
+test('the outbox refuses requests without the cookie', async () => {
+  process.env.ADMIN_PASSWORD = 'admin-pass-123';
+  const res = await request(app).get('/admin/api/outbox');
   expect(res.status).toBe(401);
 });

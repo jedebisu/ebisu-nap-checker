@@ -5,6 +5,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { smtpConfigured } = require('../services/mailer');
 
 const router = express.Router();
 
@@ -66,6 +67,28 @@ function escapeHtml(value) {
   );
 }
 
+// Without SMTP configured the mailer archives every message in mail_outbox
+// instead of sending it. On a hosted instance the disk is wiped on restart, so
+// the database is the only place an OTP survives long enough to be read. This
+// page is how the owner gets verification codes and temporary passwords until
+// real SMTP credentials are configured.
+async function readOutbox(pool, limit = 50) {
+  const { rows } = await pool.query(
+    `SELECT id, to_email, subject, body, created_at
+       FROM mail_outbox
+      ORDER BY created_at DESC, id DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    to: r.to_email,
+    subject: r.subject,
+    body: r.body,
+    createdAt: r.created_at,
+  }));
+}
+
 // Disable the whole area when no password is configured.
 router.use((req, res, next) => {
   if (!adminEnabled()) return res.status(404).json({ error: 'Not found' });
@@ -107,9 +130,12 @@ function codesPage(codes) {
   return page(`
     <div class="bar">
       <h1>Invite codes</h1>
-      <form method="post" action="/admin/logout">
-        <button type="submit">Log out</button>
-      </form>
+      <div>
+        <a href="/admin/outbox">Emails</a>
+        <form method="post" action="/admin/logout" style="display:inline">
+          <button type="submit">Log out</button>
+        </form>
+      </div>
     </div>
     <p>Give a code to one person. They need it to register in the app.</p>
     <form method="post" action="/admin/api/invite-codes">
@@ -117,6 +143,42 @@ function codesPage(codes) {
       <button type="submit">Generate code</button>
     </form>
     <table><tr><th>Code</th><th>Uses</th><th>Last used by</th></tr>${rows}</table>`);
+}
+
+function outboxPage(messages, smtpOn) {
+  const items = messages
+    .map(
+      (m) => `
+      <div style="border-bottom:1px solid #ddd;padding:12px 0">
+        <div><strong>${escapeHtml(m.subject)}</strong> &rarr; ${escapeHtml(m.to)}</div>
+        <div style="color:#666;font-size:12px">${escapeHtml(
+          new Date(m.createdAt).toLocaleString()
+        )}</div>
+        <pre style="white-space:pre-wrap;background:#f7f7f7;padding:8px">${escapeHtml(m.body)}</pre>
+      </div>`
+    )
+    .join('');
+
+  const notice = smtpOn
+    ? '<p>Email delivery is configured, so these copies are archives of messages that were really sent.</p>'
+    : `<p class="error">Email delivery is NOT configured.</p>
+       <p>Messages below were saved here instead of being emailed. Read the code or
+       password from the message body and type it into the app. This is a temporary
+       workaround — set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and MAIL_FROM on
+       the server to send real email.</p>`;
+
+  return page(`
+    <div class="bar">
+      <h1>Emails</h1>
+      <div>
+        <a href="/admin">Invite codes</a>
+        <form method="post" action="/admin/logout" style="display:inline">
+          <button type="submit">Log out</button>
+        </form>
+      </div>
+    </div>
+    ${notice}
+    ${messages.length ? items : '<p><em>No messages yet.</em></p>'}`);
 }
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -176,6 +238,18 @@ router.get('/api/invite-codes', requireAdmin, asyncHandler(async (req, res) => {
      FROM invite_codes ORDER BY created_at DESC`
   );
   res.json({ codes: rows });
+}));
+
+// Read-only view of the messages the mailer archived because SMTP is not
+// configured. The database is used rather than server/outbox because a hosted
+// instance loses its disk on every restart.
+router.get('/outbox', requireAdmin, asyncHandler(async (req, res) => {
+  const messages = await readOutbox(req.db);
+  res.send(outboxPage(messages, smtpConfigured()));
+}));
+
+router.get('/api/outbox', requireAdmin, asyncHandler(async (req, res) => {
+  res.json({ messages: await readOutbox(req.db) });
 }));
 
 module.exports = router;

@@ -107,7 +107,7 @@ router.post('/register', async (req, res) => {
         `Hi ${first_name.trim()},\n\n` +
         `Your verification code is: ${code}\n\n` +
         `It expires in 5 minutes. If you did not request this, ignore this email.\n`,
-    });
+    }, { pool });
 
     res.status(201).json({ message: 'Registered. Check your email for the verification code.' });
   } catch (err) {
@@ -206,7 +206,7 @@ router.post('/resend-otp', async (req, res) => {
       text:
         `Your verification code is: ${code}\n\n` +
         `It expires in 5 minutes. If you did not request this, ignore this email.\n`,
-    });
+    }, { pool });
 
     res.json({ message: 'A new verification code was sent.' });
   } catch (err) {
@@ -274,7 +274,7 @@ async function issueTempPassword(pool, user) {
       `This password is valid for 24 hours. Log in and you will be asked to ` +
       `set your own password.\n\n` +
       `If it expires, register again on the app.\n`,
-  });
+  }, { pool });
 
   return tempPassword;
 }

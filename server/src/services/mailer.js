@@ -46,9 +46,34 @@ async function sendViaSmtp({ to, subject, text }) {
   return { delivered: 'smtp' };
 }
 
-async function sendMail(message) {
+// With no SMTP the message must still be recoverable. The file alone is not
+// enough on a hosted instance (ephemeral disk, restarts), so when a pool is
+// available the message is also stored in the database where the admin page can
+// show it. The file is still written because tests and local dev read it, but a
+// read-only disk must not fail the request — the database copy is what matters.
+async function sendMail(message, { pool } = {}) {
   if (smtpConfigured()) return sendViaSmtp(message);
-  return sendViaOutbox(message);
+
+  let fileResult = { delivered: 'outbox' };
+  try {
+    fileResult = await sendViaOutbox(message);
+  } catch (err) {
+    if (!pool) throw err; // no fallback available: surface the failure
+    console.error('could not write the file outbox:', err.message);
+  }
+
+  if (pool) {
+    try {
+      await pool.query(
+        'INSERT INTO mail_outbox (to_email, subject, body) VALUES ($1, $2, $3)',
+        [message.to, message.subject, message.text]
+      );
+    } catch (err) {
+      console.error('could not archive mail to the database:', err.message);
+    }
+  }
+
+  return fileResult;
 }
 
-module.exports = { sendMail };
+module.exports = { sendMail, smtpConfigured };

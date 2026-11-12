@@ -20,7 +20,10 @@ const API_BASE_URL =
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000,
+  // The free Render instance sleeps after ~15 minutes idle and needs ~50s to
+  // wake, and the upstream NAP API cold-starts too. 60s would fail on the first
+  // request almost every time the app is opened after a break.
+  timeout: 90000,
   headers: {
     'Content-Type': 'application/json',
   },

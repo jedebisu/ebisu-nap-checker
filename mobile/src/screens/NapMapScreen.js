@@ -12,10 +12,11 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
-import MapView, { Marker, Callout, Circle } from 'react-native-maps';
+import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { napsAPI, errorMessage } from '../services/api';
+import { fetchRoute } from '../services/routing';
 import {
   debounce,
   parseCoordinate,
@@ -68,16 +69,35 @@ export default function NapMapScreen() {
   const [coordinateSearchResult, setCoordinateSearchResult] = useState(null);
   const [searchMarker, setSearchMarker] = useState(null);
 
+  // Long-press drops a pin somewhere the user is not standing, so they can
+  // check capacity around a building they are about to visit.
+  const [droppedPin, setDroppedPin] = useState(null);
+  // Tapping a marker picks it for the details card and the walking route.
+  const [selectedNap, setSelectedNap] = useState(null);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [routeDistanceKm, setRouteDistanceKm] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState('');
+
   const mapRef = useRef(null);
   const nearbySeqRef = useRef(0);
   const napSeqRef = useRef(0);
   const lastFlushRef = useRef({ query: null, at: 0 });
   const locationRef = useRef(null);
+  const droppedPinRef = useRef(null);
+  const isSearchingRef = useRef(false);
+  const lastRouteRef = useRef({ napId: null, origin: null });
   const lastFetchedCenterRef = useRef(null);
   const fetchNearbyNapsRef = useRef(null);
   const watcherRef = useRef(null);
   const isMountedRef = useRef(true);
   const myLocationBusyRef = useRef(false);
+
+  // The live-position callback cannot read state without going stale, so the
+  // two flags it cares about are mirrored into refs.
+  useEffect(() => {
+    isSearchingRef.current = isSearching;
+  }, [isSearching]);
 
   // "Data last updated" comes from the NAP database itself, so the map never
   // pretends to be fresher than it is.
@@ -161,6 +181,10 @@ export default function NapMapScreen() {
       if (!coordinate) return;
       locationRef.current = coordinate;
       setLocation(coordinate);
+
+      // While a pin is dropped or a search is on screen, the map belongs to
+      // that view — walking a few metres must not yank the results back.
+      if (droppedPinRef.current || isSearchingRef.current) return;
 
       const lastCenter = lastFetchedCenterRef.current;
       if (!lastCenter || distanceMeters(lastCenter, coordinate) >= MIN_REFRESH_DISTANCE_M) {
@@ -289,7 +313,7 @@ export default function NapMapScreen() {
     }
   };
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     debouncedSearch.cancel();
     napSeqRef.current++;
     setSearchQuery('');
@@ -298,7 +322,130 @@ export default function NapMapScreen() {
     setSearchError('');
     setCoordinateSearchResult(null);
     setSearchMarker(null);
-  };
+  }, [debouncedSearch]);
+
+  // --- Dropped pin and walking directions ----------------------------------
+
+  const selectNap = useCallback((nap) => {
+    Keyboard.dismiss();
+    setSelectedNap(nap);
+  }, []);
+
+  const handleMapLongPress = useCallback(
+    async (event) => {
+      const coordinate = parseCoordinate(
+        event?.nativeEvent?.coordinate?.latitude,
+        event?.nativeEvent?.coordinate?.longitude
+      );
+      if (!coordinate) return;
+
+      // A new spot means new surroundings; the old directions no longer apply.
+      clearSearch();
+      setSelectedNap(null);
+      setRoutePoints([]);
+      setRouteDistanceKm(null);
+      setRouteError('');
+      droppedPinRef.current = coordinate;
+      setDroppedPin(coordinate);
+      lastFetchedCenterRef.current = coordinate;
+      centerOn(coordinate, 0.02);
+      await fetchNearbyNaps(coordinate.latitude, coordinate.longitude, { silent: true });
+    },
+    [centerOn, clearSearch, fetchNearbyNaps]
+  );
+
+  // Dragging the pin moves the pin only; the nearby list refreshes once the
+  // finger is lifted, not on every pixel.
+  const handlePinDrag = useCallback((event) => {
+    const coordinate = parseCoordinate(
+      event?.nativeEvent?.coordinate?.latitude,
+      event?.nativeEvent?.coordinate?.longitude
+    );
+    if (!coordinate) return;
+    droppedPinRef.current = coordinate;
+    setDroppedPin(coordinate);
+  }, []);
+
+  const handlePinDragEnd = useCallback(
+    async (event) => {
+      const coordinate = parseCoordinate(
+        event?.nativeEvent?.coordinate?.latitude,
+        event?.nativeEvent?.coordinate?.longitude
+      );
+      if (!coordinate) return;
+      droppedPinRef.current = coordinate;
+      setDroppedPin(coordinate);
+      lastFetchedCenterRef.current = coordinate;
+      await fetchNearbyNaps(coordinate.latitude, coordinate.longitude, { silent: true });
+    },
+    [fetchNearbyNaps]
+  );
+
+  const clearPin = useCallback(async () => {
+    droppedPinRef.current = null;
+    setDroppedPin(null);
+    setRoutePoints([]);
+    setRouteDistanceKm(null);
+    setRouteError('');
+    const current = locationRef.current || location;
+    if (current) {
+      lastFetchedCenterRef.current = current;
+      centerOn(current);
+      await fetchNearbyNaps(current.latitude, current.longitude, { silent: true });
+    }
+  }, [centerOn, fetchNearbyNaps, location]);
+
+  // Directions are recalculated only when the target changes or the starting
+  // point really moves — every route costs one request.
+  useEffect(() => {
+    const destination = selectedNap
+      ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)
+      : null;
+    // Priority: dropped pin, then coordinate search, then the user's position.
+    const origin = droppedPin || searchMarker || location;
+
+    if (!destination || !origin) {
+      setRoutePoints([]);
+      setRouteDistanceKm(null);
+      setRouteLoading(false);
+      setRouteError('');
+      lastRouteRef.current = { napId: null, origin: null };
+      return undefined;
+    }
+
+    const napId = selectedNap?.id ?? null;
+    const previous = lastRouteRef.current;
+    const sameTarget = previous.napId === napId;
+    const originMoved =
+      !previous.origin || distanceMeters(previous.origin, origin) >= MIN_REFRESH_DISTANCE_M;
+    if (sameTarget && !originMoved) return undefined;
+    lastRouteRef.current = { napId, origin };
+
+    let cancelled = false;
+    setRouteLoading(true);
+    setRouteError('');
+    fetchRoute(origin, destination)
+      .then((route) => {
+        if (cancelled) return;
+        setRoutePoints(route.points || []);
+        setRouteDistanceKm(route.distanceKm);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // No line is better than a wrong line; the card falls back to the
+        // straight-line distance that came with the NAP record.
+        setRoutePoints([]);
+        setRouteDistanceKm(null);
+        setRouteError('Walking route unavailable.');
+      })
+      .finally(() => {
+        if (!cancelled) setRouteLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNap, droppedPin, searchMarker, location]);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,30 +544,38 @@ export default function NapMapScreen() {
     }
   }, [centerOn, fetchNearbyNaps, startLiveWatcher]);
 
-  const renderNapMarker = useCallback((nap) => {
-    const coordinate = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
-    if (!coordinate) return null;
-    const color = getMarkerColor(nap.vacant_lines);
-    return (
-      <Marker key={nap.id} coordinate={coordinate} pinColor={color}>
-        <Callout>
-          <View style={styles.callout}>
-            <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
-            <Text style={styles.calloutText} numberOfLines={2}>
-              {nap.building_served || 'N/A'}
-            </Text>
-            <Text style={styles.calloutText}>Status: {nap.naps_status || 'N/A'}</Text>
-            <Text style={[styles.calloutText, { color, fontWeight: '700' }]}>
-              {nap.vacant_lines} of {nap.total_capacity} ports available
-            </Text>
-            {nap.distance_km !== undefined ? (
-              <Text style={styles.calloutText}>{formatDistance(nap.distance_km)} away</Text>
-            ) : null}
-          </View>
-        </Callout>
-      </Marker>
-    );
-  }, []);
+  const renderNapMarker = useCallback(
+    (nap) => {
+      const coordinate = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+      if (!coordinate) return null;
+      const color = getMarkerColor(nap.vacant_lines);
+      return (
+        <Marker
+          key={nap.id}
+          coordinate={coordinate}
+          pinColor={color}
+          onPress={() => selectNap(nap)}
+        >
+          <Callout onPress={() => selectNap(nap)}>
+            <View style={styles.callout}>
+              <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
+              <Text style={styles.calloutText} numberOfLines={2}>
+                {nap.building_served || 'N/A'}
+              </Text>
+              <Text style={styles.calloutText}>Status: {nap.naps_status || 'N/A'}</Text>
+              <Text style={[styles.calloutText, { color, fontWeight: '700' }]}>
+                {nap.vacant_lines} of {nap.total_capacity} ports available
+              </Text>
+              {nap.distance_km !== undefined ? (
+                <Text style={styles.calloutText}>{formatDistance(nap.distance_km)} away</Text>
+              ) : null}
+            </View>
+          </Callout>
+        </Marker>
+      );
+    },
+    [selectNap]
+  );
 
   const displayNaps = isSearching ? searchResults : nearbyNaps;
   const napMarkers = useMemo(() => displayNaps.map(renderNapMarker), [displayNaps, renderNapMarker]);
@@ -429,9 +584,21 @@ export default function NapMapScreen() {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { ...DEFAULT_CENTER, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-  const radiusCenter = location;
+  // The 1 km circle marks where the nearby list was taken from: the pin when
+  // one is dropped, otherwise the user.
+  const radiusCenter = droppedPin || location;
   const showNoResults =
     isSearching && !searching && !searchError && searchResults.length === 0 && searchQuery.trim().length >= 2;
+
+  // Distance line for the selected NAP: the walking route once it arrives,
+  // otherwise the straight-line figure that came with the record.
+  const routeDistanceText = routeLoading
+    ? 'Measuring walking route…'
+    : routeDistanceKm !== null && routeDistanceKm !== undefined
+      ? `${Number(routeDistanceKm).toFixed(2)} km walk`
+      : selectedNap?.distance_km !== undefined && selectedNap?.distance_km !== null
+        ? `${formatDistance(selectedNap.distance_km)} direct`
+        : null;
 
   return (
     <View style={styles.container}>
@@ -467,9 +634,11 @@ export default function NapMapScreen() {
             <Text style={styles.statusText}>
               {isSearching
                 ? `${searchResults.length} search result${searchResults.length === 1 ? '' : 's'}`
-                : nearbyNaps.length >= NEARBY_LIMIT
-                  ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km (limit ${NEARBY_LIMIT})`
-                  : `${nearbyNaps.length} NAP${nearbyNaps.length === 1 ? '' : 's'} within ${RADIUS_KM}km`}
+                : droppedPin
+                  ? `${nearbyNaps.length} NAP${nearbyNaps.length === 1 ? '' : 's'} within ${RADIUS_KM}km of pin`
+                  : nearbyNaps.length >= NEARBY_LIMIT
+                    ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km (limit ${NEARBY_LIMIT})`
+                    : `${nearbyNaps.length} NAP${nearbyNaps.length === 1 ? '' : 's'} within ${RADIUS_KM}km`}
             </Text>
             <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
               Data last updated:{' '}
@@ -499,6 +668,15 @@ export default function NapMapScreen() {
               Showing coordinates {coordinateSearchResult.latitude.toFixed(5)},{' '}
               {coordinateSearchResult.longitude.toFixed(5)}
             </Text>
+          </View>
+        ) : null}
+
+        {droppedPin && !isSearching ? (
+          <View style={styles.pinBanner}>
+            <Text style={styles.pinBannerText}>Pinned spot — checking around here</Text>
+            <TouchableOpacity onPress={clearPin} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.pinBannerClear}>Clear ✕</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -544,6 +722,7 @@ export default function NapMapScreen() {
         initialRegion={initialRegion}
         showsUserLocation
         followsUserLocation={false}
+        onLongPress={handleMapLongPress}
       >
         {radiusCenter && !isSearching ? (
           <Circle
@@ -555,15 +734,57 @@ export default function NapMapScreen() {
           />
         ) : null}
 
+        {droppedPin ? (
+          <Marker
+            coordinate={droppedPin}
+            pinColor={COLORS.pin}
+            draggable
+            onDrag={handlePinDrag}
+            onDragEnd={handlePinDragEnd}
+            accessibilityLabel="Pinned search location"
+          />
+        ) : null}
+
         {searchMarker ? (
           <Marker coordinate={searchMarker} pinColor={COLORS.pin} />
+        ) : null}
+
+        {routePoints.length > 1 ? (
+          <Polyline coordinates={routePoints} strokeColor={COLORS.info} strokeWidth={4} />
         ) : null}
 
         {napMarkers}
       </MapView>
 
+      {selectedNap ? (
+        <View style={styles.selectedCard}>
+          <View style={styles.selectedRow}>
+            <View
+              style={[styles.selectedDot, { backgroundColor: getMarkerColor(selectedNap.vacant_lines) }]}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.selectedTitle} numberOfLines={1}>
+                {selectedNap.nap_id}
+              </Text>
+              <Text style={styles.selectedSubtitle} numberOfLines={1}>
+                {[selectedNap.building_served, routeDistanceText].filter(Boolean).join(' · ') || 'N/A'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setSelectedNap(null)}
+              style={styles.selectedClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Close selected NAP"
+            >
+              <Text style={styles.selectedCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {routeError ? <Text style={styles.selectedRouteError}>{routeError}</Text> : null}
+        </View>
+      ) : null}
+
       <TouchableOpacity
-        style={styles.myLocationButton}
+        style={[styles.myLocationButton, selectedNap && { bottom: 150 }]}
         onPress={handleMyLocation}
         activeOpacity={0.85}
         disabled={locating}
@@ -646,6 +867,42 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   clearButtonText: { fontSize: 12, color: COLORS.muted, fontWeight: 'bold' },
+  pinBanner: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(245, 243, 255, 0.97)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.pin,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pinBannerText: { fontSize: 11, color: COLORS.pin, fontWeight: '700' },
+  pinBannerClear: { fontSize: 11, color: COLORS.danger, fontWeight: '700' },
+  selectedCard: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    zIndex: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  selectedRow: { flexDirection: 'row', alignItems: 'center' },
+  selectedDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  selectedTitle: { fontSize: 14, fontWeight: '800', color: COLORS.dark },
+  selectedSubtitle: { fontSize: 12, color: COLORS.muted, marginTop: 3 },
+  selectedClose: { padding: 6, marginLeft: 8 },
+  selectedCloseText: { fontSize: 13, color: COLORS.muted, fontWeight: 'bold' },
+  selectedRouteError: { fontSize: 11, color: COLORS.danger, marginTop: 8 },
   statusText: { fontSize: 12, color: COLORS.muted, fontWeight: '500' },
   dataDateText: { fontSize: 10, color: COLORS.muted, marginTop: 2 },
   dataDateError: { color: COLORS.danger, fontWeight: '600' },

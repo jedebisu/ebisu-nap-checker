@@ -105,5 +105,18 @@ code makes password/OTP emails fail with a database error.
 
 ## Publishing the app
 
-The mobile app is a separate plan and lives in `mobile/` once built. APKs will
-be published on GitHub Releases, the same way as EBISU-T&A.
+The mobile app is built separately (see `mobile/README.md`). APKs will be published on GitHub Releases, the same way as EBISU-T&A.
+
+## Mobile app
+
+A standalone Expo SDK 54 React Native app (`mobile/`) that talks to this server.
+Features:
+
+- Invite-only registration with 6-digit email OTP and a 24-hour temporary password
+- Forced first-login password reset (8+ chars, uppercase, digit, special character)
+- Dashboard greeting ("Hi, <first name>!") and NAP report last-update date
+- NAP map mirroring the EBISU-T&A checker: colour-coded markers, search by place
+  name or coordinate, dropped pin with walking route, nearby list with status
+  filter chips, tap-to-select detail panel with copy-coordinates
+
+See [`mobile/README.md`](mobile/README.md) for setup and build instructions.

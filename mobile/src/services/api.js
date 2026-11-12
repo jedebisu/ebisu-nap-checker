@@ -64,6 +64,15 @@ api.interceptors.response.use(
   }
 );
 
+// The server reports a weak password as { error: 'WEAK_PASSWORD', reason: code }.
+// These turn the short codes into sentences.
+const PASSWORD_REASONS = {
+  length: 'Use at least 8 characters.',
+  uppercase: 'Add at least one uppercase letter (A–Z).',
+  number: 'Add at least one number.',
+  special: 'Add at least one special character, such as ! or @.',
+};
+
 // Turns any failure into one plain-English sentence the screens can show as-is.
 // The server's own message is used when it is already readable.
 export const errorMessage = (error) => {
@@ -79,7 +88,7 @@ export const errorMessage = (error) => {
     INVALID_CREDENTIALS: 'Wrong email or password.',
     ACCOUNT_EXPIRED: 'This registration expired. Please register again.',
     OTP_NOT_VERIFIED: 'Verify your email first — the code is in your inbox.',
-    WEAK_PASSWORD: data?.reason || 'Choose a stronger password.',
+    WEAK_PASSWORD: PASSWORD_REASONS[data?.reason] || 'Choose a stronger password.',
     AUTH_REQUIRED: 'Your session ended. Please log in again.',
     RESET_TOKEN_INVALID: 'This reset link expired. Log in again to get a new password.',
     NAP_SERVICE_UNAVAILABLE: 'The NAP service is not responding. Try again in a moment.',

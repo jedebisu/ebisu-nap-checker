@@ -16,7 +16,9 @@ async function forward(req, res) {
   const url = `${UPSTREAM()}/api/naps${req.path}${query ? `?${query}` : ''}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  // Render's free tier can take 30s+ to wake a sleeping instance; 10s was too
+  // tight and surfaced as false NAP_SERVICE_UNAVAILABLE errors.
+  const timer = setTimeout(() => controller.abort(), 30000);
 
   try {
     const upstream = await fetch(url, { signal: controller.signal });

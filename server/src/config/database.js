@@ -22,7 +22,9 @@ const pool = isProduction
       ...(connectionStringOrUndefined()
         ? { connectionString: connectionStringOrUndefined() }
         : {}),
-      user: process.env.DB_USER || 'yanggee',
+      // pg already defaults to the OS user; never hardcode a personal username
+      // in a repo that other people (and CI) will clone.
+      user: process.env.DB_USER || process.env.USER || undefined,
       host: process.env.DB_HOST || 'localhost',
       database: isTest ? 'napcheck_test' : process.env.DB_NAME || 'napcheck',
       password: process.env.DB_PASSWORD || undefined,

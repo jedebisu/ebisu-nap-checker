@@ -3,3 +3,4 @@ server/.env
 server/outbox/
 .superpowers/
 .DS_Store
+dist/

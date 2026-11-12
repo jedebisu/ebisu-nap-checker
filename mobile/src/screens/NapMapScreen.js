@@ -2,12 +2,27 @@
 // are still free. Ported from the EBISU T&A app so both apps behave the same;
 // NAP data comes from our own server, which proxies the NAP database.
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+} from 'react-native';
 import MapView, { Marker, Callout, Circle } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { napsAPI, errorMessage } from '../services/api';
-import { debounce, parseCoordinate, formatDateTime, distanceMeters } from '../utils/helpers';
+import {
+  debounce,
+  parseCoordinate,
+  parseCoordinateInput,
+  formatDateTime,
+  distanceMeters,
+} from '../utils/helpers';
 import { COLORS } from '../theme';
 
 const RADIUS_KM = 1;
@@ -17,6 +32,9 @@ const MIN_REFRESH_DISTANCE_M = 50;
 const LIVE_UPDATE_DISTANCE_M = 25;
 const LIVE_UPDATE_INTERVAL_MS = 10000;
 const NEARBY_REFRESH_DEBOUNCE_MS = 1200;
+// Short pause after typing so "Cebu City" is one request, not nine. Kept at the
+// EBISU T&A value (350 ms) so the search feels the same in both apps.
+const SEARCH_DEBOUNCE_MS = 350;
 
 // Fallback view when the phone's location is unknown: Cebu City.
 const DEFAULT_CENTER = { latitude: 10.3157, longitude: 123.8854 };
@@ -40,8 +58,20 @@ export default function NapMapScreen() {
   const [dataDate, setDataDate] = useState(null);
   const [dataDateError, setDataDateError] = useState(false);
 
+  // Search: text queries hit the NAP database; coordinate queries just move
+  // the map (no request needed).
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [coordinateSearchResult, setCoordinateSearchResult] = useState(null);
+  const [searchMarker, setSearchMarker] = useState(null);
+
   const mapRef = useRef(null);
   const nearbySeqRef = useRef(0);
+  const napSeqRef = useRef(0);
+  const lastFlushRef = useRef({ query: null, at: 0 });
   const locationRef = useRef(null);
   const lastFetchedCenterRef = useRef(null);
   const fetchNearbyNapsRef = useRef(null);
@@ -178,6 +208,98 @@ export default function NapMapScreen() {
     mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: delta, longitudeDelta: delta }, 500);
   }, []);
 
+  const performNapSearch = useCallback(async (query) => {
+    const q = String(query || '').trim();
+    // A single character matches almost everything in the database; wait for two.
+    if (q.length < 2) {
+      napSeqRef.current++;
+      setSearchResults([]);
+      setIsSearching(false);
+      setSearchError('');
+      return;
+    }
+
+    const seq = ++napSeqRef.current;
+    setSearching(true);
+    setSearchError('');
+    try {
+      const response = await napsAPI.search({ q, limit: 100 });
+      if (seq !== napSeqRef.current) return;
+      setSearchResults(response.naps || []);
+    } catch (searchFailure) {
+      if (seq !== napSeqRef.current) return;
+      setSearchResults([]);
+      setSearchError(errorMessage(searchFailure));
+    } finally {
+      if (seq === napSeqRef.current) setSearching(false);
+    }
+  }, []);
+
+  const debouncedSearch = useMemo(
+    () =>
+      debounce((query) => {
+        // Pressing Enter already searched this exact text; don't repeat it.
+        const lastFlush = lastFlushRef.current;
+        if (lastFlush.query === query && Date.now() - lastFlush.at < 700) return;
+        performNapSearch(query);
+      }, SEARCH_DEBOUNCE_MS),
+    [performNapSearch]
+  );
+
+  const handleSearchChange = (text) => {
+    setSearchQuery(text);
+
+    // A coordinate is not a place name: move the map instead of searching.
+    const coordinate = parseCoordinateInput(text);
+    if (coordinate) {
+      napSeqRef.current++;
+      debouncedSearch.cancel();
+      setIsSearching(false);
+      setSearchResults([]);
+      setSearchError('');
+      setSearchMarker(coordinate);
+      setCoordinateSearchResult(coordinate);
+      centerOn(coordinate);
+      return;
+    }
+
+    setSearchMarker(null);
+    setCoordinateSearchResult(null);
+    setIsSearching(text.trim().length >= 2);
+    if (text.trim().length < 2) {
+      napSeqRef.current++;
+      setSearchResults([]);
+      setSearchError('');
+      debouncedSearch.cancel();
+      return;
+    }
+    debouncedSearch(text);
+  };
+
+  const handleSubmitEditing = () => {
+    Keyboard.dismiss();
+    if (coordinateSearchResult) {
+      centerOn(coordinateSearchResult);
+      return;
+    }
+    const q = searchQuery.trim();
+    if (q.length >= 2) {
+      lastFlushRef.current = { query: q, at: Date.now() };
+      performNapSearch(q);
+    }
+  };
+
+  const clearSearch = () => {
+    debouncedSearch.cancel();
+    napSeqRef.current++;
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+    setSearchError('');
+    setCoordinateSearchResult(null);
+    setSearchMarker(null);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -300,23 +422,54 @@ export default function NapMapScreen() {
     );
   }, []);
 
-  const napMarkers = useMemo(() => nearbyNaps.map(renderNapMarker), [nearbyNaps, renderNapMarker]);
+  const displayNaps = isSearching ? searchResults : nearbyNaps;
+  const napMarkers = useMemo(() => displayNaps.map(renderNapMarker), [displayNaps, renderNapMarker]);
 
   const initialRegion = location
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { ...DEFAULT_CENTER, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
   const radiusCenter = location;
+  const showNoResults =
+    isSearching && !searching && !searchError && searchResults.length === 0 && searchQuery.trim().length >= 2;
 
   return (
     <View style={styles.container}>
       <View style={styles.searchStack}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={COLORS.muted} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search NAPs, place, or coordinates…"
+            placeholderTextColor={COLORS.muted}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            onSubmitEditing={handleSubmitEditing}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Search NAPs or coordinates"
+          />
+          {searching ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity
+              onPress={clearSearch}
+              style={styles.clearButton}
+              accessibilityLabel="Clear search"
+            >
+              <Text style={styles.clearButtonText}>✕</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         <View style={styles.statusBar}>
           <View style={{ flex: 1 }}>
             <Text style={styles.statusText}>
-              {nearbyNaps.length >= NEARBY_LIMIT
-                ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km (limit ${NEARBY_LIMIT})`
-                : `${nearbyNaps.length} NAP${nearbyNaps.length === 1 ? '' : 's'} within ${RADIUS_KM}km`}
+              {isSearching
+                ? `${searchResults.length} search result${searchResults.length === 1 ? '' : 's'}`
+                : nearbyNaps.length >= NEARBY_LIMIT
+                  ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km (limit ${NEARBY_LIMIT})`
+                  : `${nearbyNaps.length} NAP${nearbyNaps.length === 1 ? '' : 's'} within ${RADIUS_KM}km`}
             </Text>
             <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
               Data last updated:{' '}
@@ -337,6 +490,34 @@ export default function NapMapScreen() {
               Location permission denied. You can still search by place or coordinates, or tap the
               locate button.
             </Text>
+          </View>
+        ) : null}
+
+        {coordinateSearchResult ? (
+          <View style={styles.noticeBanner}>
+            <Text style={styles.noticeText}>
+              Showing coordinates {coordinateSearchResult.latitude.toFixed(5)},{' '}
+              {coordinateSearchResult.longitude.toFixed(5)}
+            </Text>
+          </View>
+        ) : null}
+
+        {showNoResults ? (
+          <View style={styles.noticeBanner}>
+            <Text style={styles.noticeText}>No NAPs match “{searchQuery.trim()}”.</Text>
+          </View>
+        ) : null}
+
+        {searchError ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{searchError}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => performNapSearch(searchQuery)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -364,7 +545,7 @@ export default function NapMapScreen() {
         showsUserLocation
         followsUserLocation={false}
       >
-        {radiusCenter ? (
+        {radiusCenter && !isSearching ? (
           <Circle
             center={radiusCenter}
             radius={RADIUS_M}
@@ -372,6 +553,10 @@ export default function NapMapScreen() {
             strokeColor={COLORS.primary}
             strokeWidth={1}
           />
+        ) : null}
+
+        {searchMarker ? (
+          <Marker coordinate={searchMarker} pinColor={COLORS.pin} />
         ) : null}
 
         {napMarkers}
@@ -438,6 +623,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  searchInput: { flex: 1, paddingVertical: 14, fontSize: 15, color: COLORS.dark },
+  clearButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  clearButtonText: { fontSize: 12, color: COLORS.muted, fontWeight: 'bold' },
   statusText: { fontSize: 12, color: COLORS.muted, fontWeight: '500' },
   dataDateText: { fontSize: 10, color: COLORS.muted, marginTop: 2 },
   dataDateError: { color: COLORS.danger, fontWeight: '600' },

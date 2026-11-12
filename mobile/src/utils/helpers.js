@@ -7,7 +7,7 @@ import * as Clipboard from 'expo-clipboard';
 // so typing "Cebu City" fires one request, not nine.
 export const debounce = (func, wait) => {
   let timeout;
-  return function executedFunction(...args) {
+  const executedFunction = (...args) => {
     const later = () => {
       clearTimeout(timeout);
       func(...args);
@@ -15,6 +15,9 @@ export const debounce = (func, wait) => {
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
+  // Lets callers drop a pending call, e.g. when the search box is cleared.
+  executedFunction.cancel = () => clearTimeout(timeout);
+  return executedFunction;
 };
 
 // Great-circle distance in metres between two {latitude, longitude} points.

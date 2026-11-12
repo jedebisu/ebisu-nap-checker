@@ -41,6 +41,12 @@ async function runMigrations(pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Bumped whenever the password changes; outstanding reset tokens carry the
+  // old version and are rejected (single-use reset links).
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0
+  `);
 }
 
 // Run directly ("npm run db:migrate") against the dev database.

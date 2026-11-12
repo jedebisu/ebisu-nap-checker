@@ -1,9 +1,16 @@
 // Account authentication routes: register, OTP verify/resend, login, reset,
 // forgot-password. Each handler stays small; shared helpers live below.
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { issueOtp, latestOtp, hashOtp, MAX_ATTEMPTS } = require('../services/otp');
-const { hashPassword } = require('../services/passwords');
+const {
+  hashPassword,
+  verifyPassword,
+  generateTempPassword,
+  validatePassword,
+} = require('../services/passwords');
 const { sendMail } = require('../services/mailer');
+const { signAuthToken, signResetToken } = require('../services/tokens');
 
 const router = express.Router();
 
@@ -137,13 +144,152 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     await pool.query('UPDATE otp_codes SET used_at = NOW() WHERE id = $1', [otp.id]);
-    // Task 7 adds the temporary-password email here.
-    res.json({ message: 'OTP verified' });
+    await issueTempPassword(pool, user);
+
+    res.json({ message: 'OTP verified; temporary password sent' });
   } catch (err) {
     console.error('verify-otp failed:', err);
     res.status(500).json({ error: 'Verification failed' });
   }
 });
+
+// Generates a strong temporary password, stores its hash, starts the 24-hour
+// login window and emails the plain password. Used by verify-otp (Task 7) and
+// by forgot-password (Task 9).
+async function issueTempPassword(pool, user) {
+  const tempPassword = generateTempPassword();
+  await pool.query(
+    `UPDATE users
+       SET password_hash = $2, status = 'pending_first_login',
+           temp_password_expires_at = NOW() + INTERVAL '24 hours',
+           updated_at = NOW()
+     WHERE id = $1`,
+    [user.id, await hashPassword(tempPassword)]
+  );
+
+  await sendMail({
+    to: user.email,
+    subject: 'EBISU NAP Checker — your temporary password',
+    text:
+      `Hi ${user.first_name},\n\n` +
+      `Your phone verification succeeded. Temporary password: ${tempPassword}\n\n` +
+      `This password is valid for 24 hours. Log in and you will be asked to ` +
+      `set your own password.\n\n` +
+      `If it expires, register again on the app.\n`,
+  });
+
+  return tempPassword;
+}
+
+// POST /api/auth/login
+router.post('/login', async (req, res) => {
+  try {
+    const pool = req.db;
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = await findUserByEmail(pool, email);
+    if (!user) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+
+    if (user.status === 'expired') {
+      return res.status(403).json({
+        error: 'ACCOUNT_EXPIRED',
+        message: 'Registration expired. Please register again.',
+      });
+    }
+    if (user.status === 'pending_otp') {
+      return res.status(403).json({ error: 'OTP_NOT_VERIFIED' });
+    }
+    if (user.status === 'pending_first_login') {
+      // Task 8 owns the expiry rule; enforced here so it cannot be bypassed.
+      if (new Date(user.temp_password_expires_at) < new Date()) {
+        await pool.query("UPDATE users SET status = 'expired' WHERE id = $1", [user.id]);
+        return res.status(403).json({
+          error: 'ACCOUNT_EXPIRED',
+          message: 'Registration expired. Please register again.',
+        });
+      }
+      return res.json({ must_reset: true, reset_token: signResetToken(user) });
+    }
+
+    res.json({
+      token: signAuthToken(user),
+      must_reset: false,
+      user: publicUser(user),
+    });
+  } catch (err) {
+    console.error('login failed:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /api/auth/reset-password — consumes a password_reset token exactly once.
+router.post('/reset-password', async (req, res) => {
+  try {
+    const pool = req.db;
+    const { reset_token, new_password } = req.body || {};
+
+    let payload;
+    try {
+      payload = jwt.verify(reset_token, jwtSecret());
+    } catch {
+      return res.status(401).json({ error: 'RESET_TOKEN_INVALID' });
+    }
+    if (payload.scope !== 'password_reset') {
+      return res.status(401).json({ error: 'RESET_TOKEN_INVALID' });
+    }
+
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [payload.sub]);
+    const user = rows[0];
+    if (!user || (payload.ver || 0) !== user.token_version) {
+      return res.status(401).json({ error: 'RESET_TOKEN_INVALID' });
+    }
+
+    const check = validatePassword(new_password);
+    if (!check.valid) {
+      return res.status(400).json({ error: 'WEAK_PASSWORD', reason: check.reason });
+    }
+
+    const updated = await pool.query(
+      `UPDATE users
+         SET password_hash = $2, status = 'active',
+             temp_password_expires_at = NULL,
+             token_version = token_version + 1, updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [user.id, await hashPassword(new_password)]
+    );
+
+    res.json({
+      token: signAuthToken(updated.rows[0]),
+      must_reset: false,
+      user: publicUser(updated.rows[0]),
+    });
+  } catch (err) {
+    console.error('reset-password failed:', err);
+    res.status(500).json({ error: 'Password reset failed' });
+  }
+});
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+  };
+}
+
+function jwtSecret() {
+  return process.env.JWT_SECRET || 'dev-only-insecure-secret';
+}
+
+module.exports = router;
 
 // POST /api/auth/resend-otp — a user may ask for a new code at most once a
 // minute. Unknown emails get the same 200 answer as known ones.

@@ -153,6 +153,27 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
+// POST /api/auth/forgot — enumeration-safe. Always answers 200 with the same
+// body. Only active accounts actually receive a fresh temporary password.
+router.post('/forgot', async (req, res) => {
+  try {
+    const pool = req.db;
+    const { email } = req.body || {};
+    const generic = { message: 'If the account exists, a new password was sent.' };
+    if (!email) return res.json(generic);
+
+    const user = await findUserByEmail(pool, email);
+    if (user && user.status === 'active') {
+      await issueTempPassword(pool, user);
+    }
+
+    res.json(generic);
+  } catch (err) {
+    console.error('forgot failed:', err);
+    res.status(500).json({ error: 'Request failed' });
+  }
+});
+
 // Generates a strong temporary password, stores its hash, starts the 24-hour
 // login window and emails the plain password. Used by verify-otp (Task 7) and
 // by forgot-password (Task 9).

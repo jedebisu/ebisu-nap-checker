@@ -41,6 +41,13 @@ if [ ! -d android ]; then
   echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 fi
 
+# android/ is generated and gitignored, so a version bump in app.json does not
+# reach the Gradle config on its own. Copy it across or two different APKs end
+# up with the same versionCode and the phone cannot tell them apart.
+VERSION_CODE="$(python3 -c "import json;d=json.load(open('app.json'))['expo']['android'];print(d.get('versionCode',1))")"
+sed -i '' -E "s/versionCode [0-9]+/versionCode $VERSION_CODE/" android/app/build.gradle
+echo "▶ versionCode $VERSION_CODE"
+
 # Gradle treats a changed JS bundle as up-to-date if only the env var moved,
 # so drop the generated bundle to force a rebuild with the new API URL.
 rm -rf android/app/build/generated/assets/createBundleReleaseJsAndAssets

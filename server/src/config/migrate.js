@@ -43,9 +43,16 @@ async function runMigrations(pool) {
   `);
 
   // Bumped whenever the password changes; outstanding reset tokens carry the
-  // old version and are rejected (single-use reset links).
+  // old version and are rejected (single-use reset links). App tokens carry it
+  // too, so a password change also logs out other devices.
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0
+  `);
+
+  // When the last temporary password was emailed. Used only to throttle
+  // /api/auth/forgot so it cannot be used to flood a mailbox.
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_temp_password_sent_at TIMESTAMPTZ
   `);
 }
 

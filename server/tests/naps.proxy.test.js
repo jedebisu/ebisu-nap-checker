@@ -5,11 +5,33 @@ process.env.JWT_SECRET = 'test-secret';
 process.env.RENDER_API_URL = 'https://upstream.test';
 
 const request = require('supertest');
+const { Pool } = require('pg');
 const app = require('../src/app');
+const { runMigrations } = require('../src/config/migrate');
 const { signAuthToken, signResetToken } = require('../src/services/tokens');
 
-const appToken = signAuthToken({ id: 7 });
-const resetToken = signResetToken({ id: 7, token_version: 0 });
+const TEST_URL = process.env.TEST_DATABASE_URL || 'postgres://localhost:5432/napcheck_test';
+const pool = new Pool({ connectionString: TEST_URL });
+
+let appToken;
+let resetToken;
+
+beforeAll(async () => {
+  await runMigrations(pool);
+  await pool.query('TRUNCATE users, otp_codes, invite_codes RESTART IDENTITY CASCADE');
+  // Tokens are checked against the database (active account, token_version),
+  // so the proxy tests need a real active user, not just a signed claim.
+  const { rows } = await pool.query(
+    `INSERT INTO users (first_name, last_name, email, phone, status)
+     VALUES ('Proxy', 'Tester', 'proxy@test.com', '09170000012', 'active') RETURNING *`
+  );
+  appToken = signAuthToken(rows[0]);
+  resetToken = signResetToken(rows[0]);
+});
+
+afterAll(async () => {
+  await pool.end();
+});
 
 const stats = {
   total_naps: '55000',

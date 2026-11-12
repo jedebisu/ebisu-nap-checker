@@ -70,6 +70,12 @@ function outboxCount() {
 
 test('active account gets a new temp password email and re-enters the 24h flow', async () => {
   await createActiveUser();
+  // Forgot is throttled to once a minute; step past the window so this test
+  // exercises the email itself rather than the throttle.
+  await pool.query(
+    "UPDATE users SET last_temp_password_sent_at = NOW() - INTERVAL '2 minutes' WHERE email = $1",
+    [EMAIL]
+  );
   const before = outboxCount();
 
   const res = await request(app).post('/api/auth/forgot').send({ email: EMAIL });

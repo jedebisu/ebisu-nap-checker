@@ -9,8 +9,10 @@ const pool = require('./config/database');
 
 const app = express();
 
-// Parse JSON bodies for every API route (register, login, OTP...).
+// Parse JSON bodies for every API route (register, login, OTP...) and ordinary
+// HTML form posts — the admin page is a real browser form, not an API client.
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 // Every route handler can reach the shared pg pool via req.db.
 app.use((req, res, next) => {

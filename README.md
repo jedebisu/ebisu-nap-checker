@@ -61,7 +61,7 @@ before touching real email.
 
 Open `http://localhost:3002/admin`, log in with `ADMIN_PASSWORD`, and generate
 invite codes. Each code has a use limit; the page lists codes with how many
-times they were used and by whom.
+times they were used and by whom, plus a Log out button.
 
 ## API at a glance
 
@@ -74,11 +74,19 @@ All NAP routes need `Authorization: Bearer <token>` from a normal login.
 | `POST /api/auth/resend-otp` | New code, max once per 60 s |
 | `POST /api/auth/login` | Temp password → `{ must_reset: true, reset_token }`; normal → `{ token }` |
 | `POST /api/auth/reset-password` | Set the real password (single-use reset token) |
-| `POST /api/auth/forgot` | Email a fresh temp password (always answers 200) |
+| `POST /api/auth/forgot` | Email a fresh temp password (always answers 200, max once per 60 s) |
+| `POST /api/auth/logout` | Revoke the token used for the call |
 | `GET /api/naps/nearest?lat&lng&radius&limit` | Nearest NAP facilities (map pins) |
 | `GET /api/naps/search?q&limit&status` | Search by NAP id / building / city |
 | `GET /api/naps/stats/summary` | Totals + `nap_report_date` (dashboard date) |
 | `GET /api/naps/:napId` | One NAP facility |
+
+## Session rules
+
+- An app token lasts 7 days, but it dies immediately when the password changes
+  (reset or a fresh temporary password) or when the user logs out.
+- Reset links last 15 minutes and can be used once.
+- Five wrong OTP guesses kill the code; only the newest code ever works.
 
 ## Tests
 
@@ -88,6 +96,12 @@ npm test
 ```
 
 Tests use the separate `napcheck_test` database and never touch real data.
+
+## After pulling an update
+
+Run `npm run db:migrate` again whenever the code changes: migrations are
+idempotent and only add what is missing. Running an old database against new
+code makes password/OTP emails fail with a database error.
 
 ## Publishing the app
 

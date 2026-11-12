@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "EBISU NAP Checker",
+    "slug": "ebisu-nap-checker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "jsEngine": "hermes",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jedebisu.napchecker",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to find NAP facilities near you."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.jedebisu.napchecker",
+      "minSdkVersion": 21,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB5rkLpbkqqIMo6FYMVj7gqoLGH3uGWoWg"
+        }
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "versionCode": 1
+    },
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "owner": "jedebisu"
+  }
+}

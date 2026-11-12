@@ -46,7 +46,9 @@ function isFormPost(req) {
 
 function requireAdmin(req, res, next) {
   if (isAdmin(req)) return next();
-  if (isFormPost(req)) return res.redirect('/admin');
+  // Browser navigations get the login page back; API clients get JSON. Without
+  // this, an expired session on /admin/outbox would render a bare JSON error.
+  if (isFormPost(req) || !req.path.startsWith('/api/')) return res.redirect('/admin');
   res.status(401).json({ error: 'ADMIN_AUTH_REQUIRED' });
 }
 

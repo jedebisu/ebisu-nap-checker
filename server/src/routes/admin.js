@@ -5,7 +5,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { smtpConfigured } = require('../services/mailer');
+const { smtpConfigured, mailProviderActive } = require('../services/mailer');
 
 const router = express.Router();
 
@@ -247,7 +247,7 @@ router.get('/api/invite-codes', requireAdmin, asyncHandler(async (req, res) => {
 // instance loses its disk on every restart.
 router.get('/outbox', requireAdmin, asyncHandler(async (req, res) => {
   const messages = await readOutbox(req.db);
-  res.send(outboxPage(messages, smtpConfigured()));
+  res.send(outboxPage(messages, mailProviderActive()));
 }));
 
 router.get('/api/outbox', requireAdmin, asyncHandler(async (req, res) => {

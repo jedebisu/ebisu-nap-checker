@@ -11,10 +11,12 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
+  FlatList,
 } from 'react-native';
 import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as Clipboard from 'expo-clipboard';
 import { napsAPI, errorMessage } from '../services/api';
 import { fetchRoute } from '../services/routing';
 import {
@@ -23,7 +25,10 @@ import {
   parseCoordinateInput,
   formatDateTime,
   distanceMeters,
+  copyToClipboard,
+  formatLatLng,
 } from '../utils/helpers';
+import StatusBadge from '../components/StatusBadge';
 import { COLORS } from '../theme';
 
 const RADIUS_KM = 1;
@@ -39,6 +44,16 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 // Fallback view when the phone's location is unknown: Cebu City.
 const DEFAULT_CENTER = { latitude: 10.3157, longitude: 123.8854 };
+
+// Status chips shown in nearby view. The server doesn't filter nearest results
+// by status, so these are applied client-side to the list overlay; markers on
+// the map stay as-is (they reflect reality, not a filtered subset).
+const STATUS_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'In Service', value: 'In Service' },
+  { label: 'Out of Service', value: 'Defective' },
+  { label: 'Planned', value: 'Planned' },
+];
 
 // 0 free lines = no capacity left, 1-8 = getting full, 9+ = plenty.
 const getMarkerColor = (vacantLines) => {
@@ -78,6 +93,13 @@ export default function NapMapScreen() {
   const [routeDistanceKm, setRouteDistanceKm] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
+  // The nearby list overlay vs map; toggleable so the owner can scan many NAPs
+  // without closing each callout one at a time.
+  const [showList, setShowList] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // Status filter applied client-side in nearby view; only affects the list,
+  // not the map markers (markers always reflect actual status).
+  const [statusFilter, setStatusFilter] = useState('');
 
   const mapRef = useRef(null);
   const nearbySeqRef = useRef(0);
@@ -578,6 +600,12 @@ export default function NapMapScreen() {
   );
 
   const displayNaps = isSearching ? searchResults : nearbyNaps;
+  // Status chips only make sense in nearby view, not during a text search (the
+  // server already handles status there). Client-side filter keeps it cheap.
+  const listNaps =
+    !isSearching && statusFilter
+      ? displayNaps.filter((nap) => nap.naps_status === statusFilter)
+      : displayNaps;
   const napMarkers = useMemo(() => displayNaps.map(renderNapMarker), [displayNaps, renderNapMarker]);
 
   const initialRegion = location
@@ -645,7 +673,41 @@ export default function NapMapScreen() {
               {dataDate ? formatDateTime(dataDate) : dataDateError ? "(can't reach server)" : '—'}
             </Text>
           </View>
+          {/* Toggle between map view and scrollable list view. Only shown in nearby mode
+              — during text search the results are rendered as markers, same as nearby. */}
+          {!isSearching ? (
+            <TouchableOpacity
+              style={styles.listToggle}
+              onPress={() => setShowList((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showList ? 'Switch to map view' : 'Switch to list view'}
+            >
+              <Text style={styles.listToggleText}>{showList ? '🗺️ Map' : '📋 List'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
+
+        {/* Status filter chips — only meaningful when looking at the nearby set; the
+            text-search path already filters on the server via the status param. */}
+        {!isSearching ? (
+          <View style={styles.chipsRow}>
+            {STATUS_FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.value || 'all'}
+                style={[styles.chip, statusFilter === f.value && styles.chipActive]}
+                onPress={() => setStatusFilter(f.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter: ${f.label}`}
+              >
+                <Text
+                  style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.legendRow}>
           <Legend color={COLORS.success} label="9+ vacant" />
@@ -756,30 +818,131 @@ export default function NapMapScreen() {
         {napMarkers}
       </MapView>
 
-      {selectedNap ? (
-        <View style={styles.selectedCard}>
-          <View style={styles.selectedRow}>
-            <View
-              style={[styles.selectedDot, { backgroundColor: getMarkerColor(selectedNap.vacant_lines) }]}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.selectedTitle} numberOfLines={1}>
-                {selectedNap.nap_id}
-              </Text>
-              <Text style={styles.selectedSubtitle} numberOfLines={1}>
-                {[selectedNap.building_served, routeDistanceText].filter(Boolean).join(' · ') || 'N/A'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => setSelectedNap(null)}
-              style={styles.selectedClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Close selected NAP"
-            >
-              <Text style={styles.selectedCloseText}>✕</Text>
-            </TouchableOpacity>
+      {/* List view — shown when the owner toggles away from the map so they can
+          scroll through many NAPs without closing each callout one at a time. */}
+      {showList ? (
+        <View style={styles.listContainer}>
+          <FlatList
+            data={listNaps}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderNapListItem}
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
+            windowSize={5}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View style={{ height: 140, paddingHorizontal: 16, paddingTop: 12 }}>
+                <TouchableOpacity onPress={() => setShowList(false)} style={styles.closeListBtn}>
+                  <Text style={styles.closeListBtnText}>🗺️ Back to map</Text>
+                </TouchableOpacity>
+              </View>
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyList}>
+                <Text style={styles.emptyListText}>
+                  {isSearching ? 'No search results' : 'No NAPs nearby'}
+                </Text>
+              </View>
+            }
+          />
+        </View>
+      ) : null}
+
+      {/* Selected NAP — collapsed bar or full detail panel */}
+      {selectedNap && !detailsExpanded ? (
+        <TouchableOpacity
+          style={styles.collapsedBar}
+          onPress={() => setDetailsExpanded(true)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Tap to expand NAP details"
+        >
+          <View
+            style={[styles.statusDot, { backgroundColor: getMarkerColor(selectedNap.vacant_lines) }]}
+          />
+          <View style={styles.collapsedInfo}>
+            <Text style={styles.collapsedTitle} numberOfLines={1}>{selectedNap.nap_id}</Text>
+            <Text style={styles.collapsedSub} numberOfLines={1}>
+              {[selectedNap.building_served, routeDistanceText].filter(Boolean).join(' · ') || 'N/A'}
+            </Text>
           </View>
-          {routeError ? <Text style={styles.selectedRouteError}>{routeError}</Text> : null}
+          <StatusBadge status={selectedNap.naps_status} />
+          <Text style={styles.expandText}>▲ Details</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {selectedNap && detailsExpanded ? (
+        <View style={styles.detailPanel}>
+          <TouchableOpacity
+            onPress={() => setSelectedNap(null)}
+            style={styles.closeDetailBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Close details"
+          >
+            <Text style={styles.closeDetailBtnText}>✕</Text>
+          </TouchableOpacity>
+
+          <View style={styles.detailHeader}>
+            <View
+              style={[styles.statusDot, { backgroundColor: getMarkerColor(selectedNap.vacant_lines) }]}
+            />
+            <View style={styles.detailTitleContainer}>
+              <Text style={styles.detailTitle}>{selectedNap.nap_id}</Text>
+              <Text style={styles.detailSubtitle}>{selectedNap.location_type || 'N/A'}</Text>
+            </View>
+            <StatusBadge status={selectedNap.naps_status} size="lg" />
+          </View>
+
+          <View style={styles.detailInfo}>
+            <InfoRow label="Building" value={selectedNap.building_served || 'N/A'} />
+            <InfoRow label="Floors" value={selectedNap.floors_served || 'N/A'} />
+            <InfoRow label="City" value={selectedNap.city_name || 'N/A'} />
+            <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
+            <InfoRow label="OLT / Cabinet" value={selectedNap.cabinet || 'N/A'} />
+            <InfoRow label="Status" value={selectedNap.naps_status || 'N/A'} />
+            <InfoRow
+              label="Coordinates"
+              value={formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)}
+              onCopy={async () => copyToClipboard(formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long))}
+            />
+            {!routeLoading && routeDistanceKm === null &&
+              selectedNap.distance_km !== undefined && (
+              <InfoRow
+                label="Distance"
+                value={`${formatDistance(selectedNap.distance_km)} direct`}
+              />
+            )}
+            {routeLoading && <InfoRow label="Distance" value="Measuring walking route…" />}
+            {!routeLoading && routeDistanceKm !== null && routeDistanceKm !== undefined && (
+              <InfoRow
+                label="Walking distance"
+                value={
+                  routeDistanceKm < 1
+                    ? `${Math.round(routeDistanceKm * 1000)}m`
+                    : `${routeDistanceKm.toFixed(2)}km`
+                }
+              />
+            )}
+          </View>
+
+          <View style={styles.portsGrid}>
+            <PortBox label="Total" value={selectedNap.total_capacity} color={COLORS.dark} />
+            <PortBox label="Working" value={selectedNap.working_lines} color={COLORS.success} />
+            <PortBox
+              label="Available"
+              value={selectedNap.vacant_lines}
+              color={getMarkerColor(selectedNap.vacant_lines)}
+            />
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setDetailsExpanded(false)}
+            style={styles.collapseBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Collapse details"
+          >
+            <Text style={styles.collapseBtnText}>▼ Show less (see map)</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -824,6 +987,75 @@ function Legend({ color, label }) {
     </View>
   );
 }
+
+// Row inside the details panel. Long-pressing the value copies it so the owner
+// can drop the coordinates into a navigation app or notes.
+function InfoRow({ label, value, onCopy }) {
+  return (
+    <TouchableOpacity
+      style={styles.infoRow}
+      onLongPress={onCopy}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}. Long press to copy.`}
+    >
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// Three coloured boxes in the detail panel showing total / working / available.
+function PortBox({ label, value, color }) {
+  return (
+    <View style={styles.portBox}>
+      <Text style={[styles.portValue, { color }] || styles.portValue}>{value}</Text>
+      <Text style={styles.portLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// One row inside the nearby list. Tapping it selects the NAP on the map.
+const renderNapListItem = useCallback(
+  ({ item: nap }) => {
+    const color = getMarkerColor(nap.vacant_lines);
+    return (
+      <TouchableOpacity
+        style={styles.listItem}
+        onPress={() => {
+          if (mapRef.current && nap.dp_nap_lat && nap.dp_nap_long) {
+            const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+            if (c) mapRef.current.animateToRegion({ ...c, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500);
+          }
+          selectNap(nap);
+          setShowList(false);
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.colorDot, { backgroundColor: color }]} />
+        <View style={styles.listItemContent}>
+          <View style={styles.listItemTitleRow}>
+            <Text style={styles.listItemTitle} numberOfLines={1}>{nap.nap_id}</Text>
+            <StatusBadge status={nap.naps_status} />
+          </View>
+          <Text style={styles.listItemSubtitle} numberOfLines={1}>
+            {[nap.building_served, formatDistance(nap.distance_km)].filter(Boolean).join(' · ') || 'N/A'}
+          </Text>
+          <Text style={styles.listItemField}>
+            <Text style={styles.listItemFieldLabel}>Cabinet:</Text>{' '}
+            {nap.cabinet || 'N/A'}
+          </Text>
+          <Text style={styles.listItemField}>
+            <Text style={styles.listItemFieldLabel}>Capacity:</Text>{' '}
+            <Text style={{ color }}>{nap.vacant_lines} of {nap.total_capacity} ports free</Text>
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+  [selectNap]
+);
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -980,4 +1212,134 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   loadingText: { marginTop: 12, fontSize: 14, color: COLORS.muted },
+  // Status filter chips
+  chipsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#f3f4f6',
+    marginRight: 6,
+  },
+  chipActive: { backgroundColor: COLORS.primary },
+  chipText: { fontSize: 11, color: COLORS.muted, fontWeight: '600' },
+  chipTextActive: { color: '#fff' },
+  // List toggle button in status bar
+  listToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: COLORS.dark,
+    borderRadius: 6,
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+  listToggleText: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  // Full-screen list overlay
+  listContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    zIndex: 15,
+  },
+  listContent: { flexGrow: 1 },
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  colorDot: { width: 12, height: 12, borderRadius: 6, marginRight: 12 },
+  listItemContent: { flex: 1 },
+  listItemTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  listItemTitle: { fontSize: 14, fontWeight: '600', color: COLORS.dark, flexShrink: 1, marginRight: 8 },
+  listItemSubtitle: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  listItemField: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  listItemFieldLabel: { color: COLORS.dark, fontWeight: '600' },
+  closeListBtn: { alignSelf: 'flex-start', paddingVertical: 6 },
+  closeListBtnText: { fontSize: 14, color: COLORS.primary, fontWeight: '700' },
+  emptyList: { padding: 40, alignItems: 'center' },
+  emptyListText: { fontSize: 14, color: COLORS.muted },
+  // Collapsed selected-NAP bar
+  collapsedBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  collapsedInfo: { flex: 1, marginHorizontal: 10 },
+  collapsedTitle: { fontSize: 14, fontWeight: '800', color: COLORS.dark },
+  collapsedSub: { fontSize: 12, color: COLORS.muted, marginTop: 3 },
+  expandText: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginLeft: 8 },
+  // Expanded detail panel
+  detailPanel: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    zIndex: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+    maxHeight: '65%',
+  },
+  closeDetailBtn: { position: 'absolute', right: 12, top: 10 },
+  closeDetailBtnText: { fontSize: 16, color: COLORS.muted, fontWeight: 'bold' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  detailTitleContainer: { flex: 1, marginHorizontal: 10 },
+  detailTitle: { fontSize: 16, fontWeight: '800', color: COLORS.dark },
+  detailSubtitle: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  detailInfo: {},
+  infoRow: { paddingVertical: 7 },
+  infoLabel: { fontSize: 11, color: COLORS.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: 14, color: COLORS.dark, marginTop: 2 },
+  portsGrid: {
+    flexDirection: 'row',
+    marginTop: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  portBox: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  portValue: { fontSize: 18, fontWeight: '800', color: COLORS.dark },
+  portLabel: { fontSize: 11, color: COLORS.muted, marginTop: 2 },
+  collapseBtn: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: 2,
+  },
+  collapseBtnText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
 });

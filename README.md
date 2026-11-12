@@ -53,15 +53,30 @@ createdb napcheck_test
 ### Emails without SMTP: the outbox
 
 Until the company SMTP values are filled in, every email the server "sends" is
-written as a plain-text file into `server/outbox/`. Open a file to read the OTP
-or temporary password. This is how you can walk through the whole flow locally
-before touching real email.
+captured instead of delivered. Two copies are kept:
+
+- **Database** — every message is inserted into the `mail_outbox` table and shown
+  on the admin **Emails** page (`/admin/outbox`). This is the one that works on a
+  deployed server: a container's disk is wiped on every restart, so a file-based
+  OTP would be gone before anyone could read it.
+- **`server/outbox/`** — a plain-text file per message, for local development and
+  tests.
+
+So on a deployed instance the flow is: generate an invite code on `/admin`, have
+the person register in the app, then open **Emails** on `/admin` and read the
+6-digit code from the message body. After they verify, the temporary password
+appears there too.
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` to switch
+to real delivery. The admin Emails page then becomes an archive of sent messages.
 
 ## Admin page
 
-Open `http://localhost:3002/admin`, log in with `ADMIN_PASSWORD`, and generate
-invite codes. Each code has a use limit; the page lists codes with how many
-times they were used and by whom, plus a Log out button.
+Open `/admin` (locally `http://localhost:3002/admin`, in production
+`https://ebisu-nap-checker-api.onrender.com/admin`), log in with
+`ADMIN_PASSWORD`, and generate invite codes. Each code has a use limit; the page
+lists codes with how many times they were used and by whom. The **Emails** link
+shows captured mail (see above), and both pages have a Log out button.
 
 ## API at a glance
 

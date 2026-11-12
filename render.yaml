@@ -1,0 +1,58 @@
+# Render Blueprint for the EBISU NAP Checker backend.
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo -> Apply.
+# The service name below is important: it must stay "ebisu-nap-checker-api" so
+# the resulting URL is https://ebisu-nap-checker-api.onrender.com — that exact
+# URL is hardcoded in mobile/src/services/api.js as PRODUCTION_API_URL.
+#
+# The database only holds ACCOUNTS (users, otp_codes, invite_codes).
+# NAP facility data is never copied here; the server proxies it live from
+# RENDER_API_URL and never writes to it.
+
+services:
+  - type: web
+    name: ebisu-nap-checker-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    # Migrations are idempotent (CREATE TABLE IF NOT EXISTS), so running them on
+    # every boot is safe and removes the need for a separate migration step.
+    startCommand: node src/config/migrate.js && node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ebisu-nap-checker-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: RENDER_API_URL
+        value: https://selfie-api-sqgh.onrender.com
+      # Set this in the dashboard after the first deploy, or the admin page
+      # stays disabled (it returns 404 instead of a password prompt).
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Leave blank until the company SMTP details are known. Blank means OTP and
+      # temporary-password emails are written to server/outbox/ instead of sent —
+      # which is unreachable on Render, so real registration needs these set.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+databases:
+  - name: ebisu-nap-checker-db
+    plan: free
+    databaseName: napcheck
+    user: napcheck
+    region: singapore

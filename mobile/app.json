@@ -2,7 +2,7 @@
   "expo": {
     "name": "EBISU NAP Checker",
     "slug": "ebisu-nap-checker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -25,7 +25,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2053A9"
       },
       "package": "com.jedebisu.napchecker",
       "minSdkVersion": 21,
@@ -38,7 +38,7 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ],
-      "versionCode": 2
+      "versionCode": 3
     },
     "plugins": [],
     "extra": {

@@ -353,6 +353,51 @@ export default function NapMapScreen() {
     setSelectedNap(nap);
   }, []);
 
+  // One row inside the nearby list. Tapping it selects the NAP on the map.
+  // This has to live inside the component: it closes over selectNap, mapRef
+  // and setShowList, none of which exist at module scope (a copy of this at
+  // file level crashed the app on launch with "Property 'selectNap' doesn't
+  // exist").
+  const renderNapListItem = useCallback(
+    ({ item: nap }) => {
+      const color = getMarkerColor(nap.vacant_lines);
+      return (
+        <TouchableOpacity
+          style={styles.listItem}
+          onPress={() => {
+            if (mapRef.current && nap.dp_nap_lat && nap.dp_nap_long) {
+              const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+              if (c) mapRef.current.animateToRegion({ ...c, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500);
+            }
+            selectNap(nap);
+            setShowList(false);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.colorDot, { backgroundColor: color }]} />
+          <View style={styles.listItemContent}>
+            <View style={styles.listItemTitleRow}>
+              <Text style={styles.listItemTitle} numberOfLines={1}>{nap.nap_id}</Text>
+              <StatusBadge status={nap.naps_status} />
+            </View>
+            <Text style={styles.listItemSubtitle} numberOfLines={1}>
+              {[nap.building_served, formatDistance(nap.distance_km)].filter(Boolean).join(' · ') || 'N/A'}
+            </Text>
+            <Text style={styles.listItemField}>
+              <Text style={styles.listItemFieldLabel}>Cabinet:</Text>{' '}
+              {nap.cabinet || 'N/A'}
+            </Text>
+            <Text style={styles.listItemField}>
+              <Text style={styles.listItemFieldLabel}>Capacity:</Text>{' '}
+              <Text style={{ color }}>{nap.vacant_lines} of {nap.total_capacity} ports free</Text>
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [selectNap]
+  );
+
   const handleMapLongPress = useCallback(
     async (event) => {
       const coordinate = parseCoordinate(
@@ -1016,46 +1061,8 @@ function PortBox({ label, value, color }) {
   );
 }
 
-// One row inside the nearby list. Tapping it selects the NAP on the map.
-const renderNapListItem = useCallback(
-  ({ item: nap }) => {
-    const color = getMarkerColor(nap.vacant_lines);
-    return (
-      <TouchableOpacity
-        style={styles.listItem}
-        onPress={() => {
-          if (mapRef.current && nap.dp_nap_lat && nap.dp_nap_long) {
-            const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
-            if (c) mapRef.current.animateToRegion({ ...c, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500);
-          }
-          selectNap(nap);
-          setShowList(false);
-        }}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.colorDot, { backgroundColor: color }]} />
-        <View style={styles.listItemContent}>
-          <View style={styles.listItemTitleRow}>
-            <Text style={styles.listItemTitle} numberOfLines={1}>{nap.nap_id}</Text>
-            <StatusBadge status={nap.naps_status} />
-          </View>
-          <Text style={styles.listItemSubtitle} numberOfLines={1}>
-            {[nap.building_served, formatDistance(nap.distance_km)].filter(Boolean).join(' · ') || 'N/A'}
-          </Text>
-          <Text style={styles.listItemField}>
-            <Text style={styles.listItemFieldLabel}>Cabinet:</Text>{' '}
-            {nap.cabinet || 'N/A'}
-          </Text>
-          <Text style={styles.listItemField}>
-            <Text style={styles.listItemFieldLabel}>Capacity:</Text>{' '}
-            <Text style={{ color }}>{nap.vacant_lines} of {nap.total_capacity} ports free</Text>
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  },
-  [selectNap]
-);
+// One row inside the nearby list. Defined inside NapMapScreen (see above) so
+// it can reach that component's selectNap/setShowList/mapRef.
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

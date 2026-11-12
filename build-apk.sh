@@ -45,12 +45,25 @@ fi
 # reach the Gradle config on its own. Copy it across or two different APKs end
 # up with the same versionCode and the phone cannot tell them apart.
 VERSION_CODE="$(python3 -c "import json;d=json.load(open('app.json'))['expo']['android'];print(d.get('versionCode',1))")"
+VERSION_NAME="$(python3 -c "import json;print(json.load(open('app.json'))['expo']['version'])")"
 sed -i '' -E "s/versionCode [0-9]+/versionCode $VERSION_CODE/" android/app/build.gradle
-echo "▶ versionCode $VERSION_CODE"
+sed -i '' -E "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
+echo "▶ versionCode $VERSION_CODE (version $VERSION_NAME)"
 
 # Gradle treats a changed JS bundle as up-to-date if only the env var moved,
 # so drop the generated bundle to force a rebuild with the new API URL.
 rm -rf android/app/build/generated/assets/createBundleReleaseJsAndAssets
+
+# A React hook called at file top level (outside a component) crashes release
+# builds on launch with a silent "Property 'x' doesn't exist" and no error on
+# screen: React Native turns the uncaught JS error into a process abort. Catch
+# it here instead of on the owner's phone.
+HOOK_AT_MODULE_SCOPE="$(grep -rnE "^(const|let|var) [A-Za-z_$]+ = (useCallback|useMemo|useState|useEffect|useRef)\(" src/ App.js || true)"
+if [ -n "$HOOK_AT_MODULE_SCOPE" ]; then
+  echo "❌ React hook called at module scope — the app will crash on launch:"
+  echo "$HOOK_AT_MODULE_SCOPE"
+  exit 1
+fi
 
 echo "▶ Building release APK (API URL: ${API_URL:-from api.js})..."
 ( cd android && ./gradlew :app:assembleRelease )

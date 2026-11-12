@@ -4,6 +4,7 @@
 const express = require('express');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const napsRoutes = require('./routes/naps');
 const pool = require('./config/database');
 
 const app = express();
@@ -23,6 +24,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/admin', adminRoutes);
+app.use('/api/naps', napsRoutes);
 
 // Central error handler: keeps stack traces out of API responses.
 app.use((err, req, res, next) => {

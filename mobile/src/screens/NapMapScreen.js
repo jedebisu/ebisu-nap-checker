@@ -1,6 +1,7 @@
 // NAP map: shows the NAP facilities around a point, coloured by how many lines
 // are still free. Ported from the EBISU T&A app so both apps behave the same;
 // NAP data comes from our own server, which proxies the NAP database.
+// — G-MAPS edition
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -39,7 +40,7 @@ const LIVE_UPDATE_DISTANCE_M = 25;
 const LIVE_UPDATE_INTERVAL_MS = 10000;
 const NEARBY_REFRESH_DEBOUNCE_MS = 1200;
 // Short pause after typing so "Cebu City" is one request, not nine. Kept at the
-// EBISU T&A value (350 ms) so the search feels the same in both apps.
+// G-MAPS value (350 ms) so the search feels consistent in this app.
 const SEARCH_DEBOUNCE_MS = 350;
 
 // Fallback view when the phone's location is unknown: Cebu City.

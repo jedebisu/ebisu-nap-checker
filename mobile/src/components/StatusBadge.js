@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { getNapStatusColor } from '../utils/helpers';
 
 // Small coloured pill: "In Service", "Defective", "Planned". Copied from the
-// EBISU T&A app so status colours match everywhere.
+// status colours match everywhere.
 const StatusBadge = ({ status, size = 'sm' }) => {
   const bgColor = getNapStatusColor(status);
   return (

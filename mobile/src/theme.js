@@ -1,102 +1,57 @@
-// Shared look for the auth screens. Colours are copied from the EBISU T&A app
-// so the two apps feel like one family; keeping them in one file means a brand
-// tweak never has to be repeated in six screens.
-import { StyleSheet } from 'react-native';
+// Globe-inspired color palette for G-MAPS.
+// Primary: Globe Blue — used for primary actions, active navigation.
+// Deep Blue: for headers, important elements, contrast.
+// Light Blue: selected sections, cards, subtle backgrounds.
+// White: dashboards, tables, content panels.
+// Dark Text: primary readable text color.
+// Border/Divider: subtle separation.
 
 export const COLORS = {
-  primary: '#c8956c', // EBISU tan
-  dark: '#1a1d23',
-  background: '#f0f2f5',
-  card: '#ffffff',
-  inputBackground: '#f9fafb',
-  border: '#e5e7eb',
-  text: '#1a1d23',
-  label: '#374151',
-  muted: '#6b7280',
-  placeholder: '#9ca3af',
-  danger: '#ef4444',
-  success: '#22c55e',
-  warning: '#f59e0b',
-  info: '#3b82f6',
-  pin: '#7c3aed',
-};
+  // Globe primary blue
+  primary: '#0072CE',
+  // Deep blue for headers and important elements
+  deep: '#003B70',
+  // Light blue for selected sections and cards
+  lightBlue: '#EAF5FC',
+  // White surfaces
+  white: '#FFFFFF',
+  // Dark readable text
+  darkText: '#172B4D',
+  // Border/divider color
+  border: '#DCE7F2',
 
-export const authStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  accent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 300,
-    backgroundColor: COLORS.dark,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-  },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 72, paddingBottom: 40 },
-  centredContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
-  brand: { alignItems: 'center', marginBottom: 28 },
-  brandTitle: { fontSize: 28, fontWeight: '800', color: '#fff', letterSpacing: 2, textAlign: 'center' },
-  brandSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.72)',
-    marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    padding: 22,
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  field: { marginBottom: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: COLORS.label, marginBottom: 8, letterSpacing: 0.3 },
-  input: {
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    backgroundColor: COLORS.inputBackground,
-    color: COLORS.text,
-  },
-  inputInvalid: { borderColor: COLORS.danger },
-  fieldError: { color: COLORS.danger, fontSize: 12, marginTop: 6 },
-  hint: { color: COLORS.muted, fontSize: 12, marginTop: 6, lineHeight: 17 },
-  banner: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  bannerText: { color: '#b91c1c', fontSize: 13, lineHeight: 19 },
-  infoBanner: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  infoBannerText: { color: '#1d4ed8', fontSize: 13, lineHeight: 19 },
-  button: {
-    backgroundColor: COLORS.dark,
-    padding: 17,
-    borderRadius: 14,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  buttonDisabled: { opacity: 0.55 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.8 },
-  link: { alignItems: 'center', marginTop: 20 },
-  linkText: { color: COLORS.primary, fontSize: 14, fontWeight: '600' },
-  mutedLinkText: { color: COLORS.muted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
-});
+  // Derived/secondary colors from the palette
+  background: '#F5F9FE',
+  card: '#FFFFFF',
+  inputBackground: '#F8FAFB',
+  borderInput: '#DCE7F2',
+  text: '#172B4D',
+  label: '#374151',
+  muted: '#6B7280',
+  placeholder: '#9CA3AF',
+  danger: '#EF4444',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  info: '#3B82F6',
+  pin: '#7C3AED',
+
+  // Auth screen / card styles
+  authBackground: '#F5F9FE',
+  authCard: '#FFFFFF',
+
+  // Button styles
+  primaryButton: '#0072CE',
+  primaryButtonText: '#FFFFFF',
+  secondaryButton: '#003B70',
+  secondaryButtonText: '#FFFFFF',
+
+  // State colors
+  disabledOpacity: 0.45,
+  focusRing: 'rgba(0, 114, 206, 0.3)',
+
+  // Status colors (kept for compatibility)
+  red: '#EF4444',
+  green: '#22C55E',
+  yellow: '#F59E0B',
+  blue: '#3B82F6',
+};

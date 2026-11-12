@@ -1,5 +1,5 @@
 // Walking directions between two points, used to draw the route line on the
-// NAP map. Copied from the EBISU T&A app so both apps behave the same.
+// G-MAPS NAP map.
 
 const decodePolyline = (str, precision = 1e6) => {
   const coords = [];

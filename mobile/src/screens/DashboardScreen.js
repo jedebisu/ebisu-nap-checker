@@ -60,7 +60,7 @@ export default function DashboardScreen({ navigation }) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Hi, {firstName}!</Text>
-          <Text style={styles.headerSubtitle}>EBISU NAP Checker</Text>
+          <Text style={styles.headerSubtitle}>G-MAPS</Text>
         </View>
         <TouchableOpacity
           style={styles.logoutButton}
@@ -138,7 +138,7 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = {
   header: {
-    backgroundColor: COLORS.dark,
+    backgroundColor: COLORS.deep,
     paddingTop: 64,
     paddingBottom: 28,
     paddingHorizontal: 24,
@@ -170,14 +170,14 @@ const styles = {
     elevation: 5,
   },
   cardLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, color: COLORS.muted },
-  date: { fontSize: 24, fontWeight: '800', color: COLORS.text, marginTop: 10 },
+  date: { fontSize: 24, fontWeight: '800', color: COLORS.darkText, marginTop: 10 },
   cardHint: { fontSize: 13, color: COLORS.muted, marginTop: 6 },
   errorText: { color: COLORS.danger, fontSize: 13, lineHeight: 19, marginTop: 10 },
   retryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: COLORS.dark,
+    backgroundColor: COLORS.deep,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
@@ -198,12 +198,12 @@ const styles = {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: '#fdf6ef',
+    backgroundColor: '#F5F5F5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
-  mapButtonTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  mapButtonTitle: { fontSize: 17, fontWeight: '700', color: COLORS.darkText },
   mapButtonSubtitle: { fontSize: 12, color: COLORS.muted, marginTop: 4, lineHeight: 17 },
   textButton: {
     flexDirection: 'row',

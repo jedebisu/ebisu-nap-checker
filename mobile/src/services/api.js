@@ -1,4 +1,4 @@
-// All HTTP calls to the EBISU NAP Checker server live here. Screens never call
+// All HTTP calls to the G-MAPS server live here. Screens never call
 // fetch/axios directly, so the base URL, auth header and error handling are
 // defined exactly once.
 //

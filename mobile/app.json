@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "EBISU NAP Checker",
-    "slug": "ebisu-nap-checker",
+    "name": "G-MAPS",
+    "slug": "gmaps",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jedebisu.napchecker",
+      "bundleIdentifier": "com.jedebisu.gmaps",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to find NAP facilities near you."
       }
@@ -25,9 +25,9 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2053A9"
+        "backgroundColor": "#0072CE"
       },
-      "package": "com.jedebisu.napchecker",
+      "package": "com.jedebisu.gmaps",
       "minSdkVersion": 21,
       "config": {
         "googleMaps": {

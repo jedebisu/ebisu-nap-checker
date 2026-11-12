@@ -381,21 +381,16 @@ export default function NapMapScreen() {
               <StatusBadge status={nap.naps_status} />
             </View>
             <Text style={styles.listItemSubtitle} numberOfLines={1}>
-              {[nap.building_served, formatDistance(nap.distance_km)].filter(Boolean).join(' · ') || 'N/A'}
+              {nap.building_served || 'N/A'}
             </Text>
-            <Text style={styles.listItemField}>
-              <Text style={styles.listItemFieldLabel}>Cabinet:</Text>{' '}
-              {nap.cabinet || 'N/A'}
-            </Text>
-            <Text style={styles.listItemField}>
-              <Text style={styles.listItemFieldLabel}>Capacity:</Text>{' '}
-              <Text style={{ color }}>{nap.vacant_lines} of {nap.total_capacity} ports free</Text>
-            </Text>
+            <FieldRow label="Physical Status" value={nap.naps_status} />
+            <FieldRow label="NAP Location" value={nap.location_type} />
+            <FieldRow label="NAP Address" value={address} />
           </View>
         </TouchableOpacity>
       );
     },
-    [selectNap]
+    [selectNap, address]
   );
 
   const handleMapLongPress = useCallback(

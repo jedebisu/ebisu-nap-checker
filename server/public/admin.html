@@ -17,7 +17,7 @@
     --warn: #B45309;
     --bad: #B91C1C;
     --card: #FFFFFF;
-    --bg: #F3F7FB;
+    --bg: #E5F0FA;
   }
   * { box-sizing: border-box; }
   body {
@@ -150,6 +150,46 @@
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   .refresh-note { color: var(--muted); font-size: 0.75rem; }
 
+  /* Tabs */
+  .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 18px; }
+  .tabs button {
+    background: transparent;
+    color: var(--globe-blue);
+    border: 1px solid var(--globe-blue);
+    border-radius: 8px;
+    padding: 9px 20px;
+  }
+  .tabs button:hover { background: var(--globe-blue-light); }
+  .tabs button.active { background: #00539B; border-color: #00539B; color: #fff; }
+  .tabs button.active:hover { background: var(--globe-blue-dark); border-color: var(--globe-blue-dark); }
+  .tab-content.hidden { display: none; }
+  .hidden { display: none !important; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    background: var(--bad);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1000;
+    max-width: min(90vw, 480px);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .pill.active { background: #DCFCE7; color: var(--ok); }
+  .pill.suspended { background: #FEE2E2; color: var(--bad); }
+  .legacy-note { color: var(--muted); font-size: 0.78rem; margin: 10px 2px 0; font-style: italic; }
+
   @media (max-width: 640px) {
     header { padding: 20px 18px; }
     main { padding: 16px 12px 48px; }
@@ -161,7 +201,7 @@
 
 <header>
   <h1>G-MAPS Admin Console</h1>
-  <p>Invite codes and account lockouts. Internal use only.</p>
+  <p>Invite codes, account lockouts, and user accounts. Internal use only.</p>
 </header>
 
 <main>
@@ -176,6 +216,14 @@
       <span id="token-status" role="status">Not connected</span>
     </form>
   </section>
+
+  <nav class="tabs" aria-label="Admin sections">
+    <button type="button" data-tab="invites" class="active">Invite Codes</button>
+    <button type="button" data-tab="lockouts">Locked Accounts</button>
+    <button type="button" data-tab="users">Users</button>
+  </nav>
+
+  <div class="tab-content" id="panel-invites">
 
   <!-- Panel A: generate invite -->
   <section class="card" aria-label="Generate invite code">
@@ -226,6 +274,10 @@
     <div class="msg" id="invites-msg" role="status"></div>
   </section>
 
+  </div><!-- /panel-invites -->
+
+  <div class="tab-content hidden" id="panel-lockouts">
+
   <!-- Panel C: locked accounts -->
   <section class="card" aria-label="Locked accounts">
     <div class="panel-head">
@@ -247,7 +299,38 @@
     <div class="msg" id="lockouts-msg" role="status"></div>
   </section>
 
+  </div><!-- /panel-lockouts -->
+
+  <div class="tab-content hidden" id="panel-users">
+
+  <!-- Panel D: users -->
+  <section class="card" aria-label="Users">
+    <div class="panel-head">
+      <div>
+        <h2>Users</h2>
+        <p class="sub" style="margin-bottom:0;">Demo accounts created through the invite flow. Legacy system accounts are excluded.</p>
+      </div>
+      <button type="button" class="secondary small" id="refresh-users-btn" disabled>Refresh now</button>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table id="users-table" aria-label="Users">
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Linked Records</th><th>Action</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="users-empty">Connect with your admin token to load users.</div>
+    </div>
+    <p class="msg bad hidden" id="users-block-note" role="alert" style="margin-top:10px;"></p>
+    <p class="legacy-note" id="legacy-note"></p>
+    <div class="msg" id="users-msg" role="status"></div>
+  </section>
+
+  </div><!-- /panel-users -->
+
 </main>
+
+<div class="toast" id="toast" role="alert"></div>
 
 <script>
 (function () {
@@ -268,6 +351,16 @@
     $('generate-btn').disabled = !connected;
     $('refresh-invites-btn').disabled = !connected;
     $('refresh-lockouts-btn').disabled = !connected;
+    $('refresh-users-btn').disabled = !connected;
+  }
+
+  var toastTimer = null;
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text || 'Something went wrong.';
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 4000);
   }
 
   async function api(path, options) {
@@ -493,6 +586,120 @@
       btn.textContent = 'Unlock';
       setMsg('lockouts-msg', (res.body && res.body.error) || ('Could not unlock ' + email + ' (error ' + res.status + ').'), 'bad');
     }
+  });
+
+  // --- Tabs ---
+  document.querySelectorAll('.tabs button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.add('hidden'); });
+      btn.classList.add('active');
+      var panel = $('panel-' + btn.getAttribute('data-tab'));
+      if (panel) panel.classList.remove('hidden');
+      if (btn.getAttribute('data-tab') === 'users') loadUsers();
+    });
+  });
+
+  // --- Panel D: users ---
+  function fullName(row) {
+    var name = [row.firstname, row.lastname].filter(Boolean).join(' ').trim();
+    return name || row.email || 'Unknown';
+  }
+
+  function renderUsers(data) {
+    var rows = (data && Array.isArray(data.users)) ? data.users : [];
+    var tbody = document.querySelector('#users-table tbody');
+    var empty = $('users-empty');
+    var legacyNote = $('legacy-note');
+    tbody.innerHTML = '';
+    if (typeof (data && data.legacy_count) === 'number') {
+      legacyNote.textContent = data.legacy_count + ' system accounts hidden';
+      legacyNote.style.display = 'block';
+    } else {
+      legacyNote.textContent = '';
+      legacyNote.style.display = 'none';
+    }
+    if (rows.length === 0) {
+      empty.textContent = 'No demo user accounts yet.';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    rows.forEach(function (row) {
+      var isActive = row.is_active !== false && row.is_active !== 0;
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-id', row.id);
+      tr.innerHTML =
+        '<td>' + escapeHtml(fullName(row)) + '</td>' +
+        '<td>' + escapeHtml(row.email) + '</td>' +
+        '<td>' + escapeHtml(row.role) + '</td>' +
+        '<td><span class="pill ' + (isActive ? 'active">Active' : 'suspended">Suspended') + '</span></td>' +
+        '<td>' + escapeHtml(fmtDate(row.created_at)) + '</td>' +
+        '<td>' + escapeHtml(row.records) + '</td>' +
+        '<td><button type="button" class="danger small delete-user-btn">Delete</button></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadUsers() {
+    if (!adminToken) return;
+    $('users-block-note').classList.add('hidden');
+    try {
+      var res = await api('/api/admin/users');
+      if (res.status === 200) {
+        renderUsers(res.body || {});
+        setMsg('users-msg', '');
+      } else if (res.status === 401) {
+        setMsg('users-msg', 'Admin token expired or invalid — reconnect above.', 'bad');
+        showToast('Could not load users: admin token rejected.');
+      } else {
+        var errMsg = (res.body && res.body.error) || ('error ' + res.status);
+        setMsg('users-msg', 'Could not load users (' + errMsg + ').', 'bad');
+        showToast('Could not load users (' + errMsg + ').');
+      }
+    } catch (_err) {
+      setMsg('users-msg', 'Network error — could not load users.', 'bad');
+      showToast('Network error — could not load users.');
+    }
+  }
+
+  async function deleteUser(id, tr) {
+    if (!adminToken || !id) return;
+    if (!window.confirm('Delete account? This cannot be undone.')) return;
+    var note = $('users-block-note');
+    note.classList.add('hidden');
+    try {
+      var res = await api('/api/admin/users/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (res.status === 200) {
+        if (tr) tr.remove();
+        var tbody = document.querySelector('#users-table tbody');
+        if (tbody.children.length === 0) {
+          $('users-empty').textContent = 'No demo user accounts yet.';
+          $('users-empty').style.display = 'block';
+        }
+        setMsg('users-msg', 'Account deleted.', 'ok');
+      } else if (res.status === 409) {
+        var body = res.body || {};
+        var n = body.blocking && body.blocking.leave_requests_approved;
+        if (typeof n !== 'number') n = 0;
+        note.textContent = 'Blocked: ' + n + ' leave requests approved this account.';
+        note.classList.remove('hidden');
+      } else {
+        var errMsg = (res.body && res.body.error) || ('error ' + res.status);
+        window.alert('Could not delete account: ' + errMsg);
+      }
+    } catch (_err) {
+      window.alert('Network error — could not delete account.');
+    }
+  }
+
+  $('refresh-users-btn').addEventListener('click', loadUsers);
+
+  document.querySelector('#users-table tbody').addEventListener('click', function (e) {
+    var btn = e.target.closest('.delete-user-btn');
+    if (!btn) return;
+    var tr = btn.closest('tr');
+    deleteUser(tr && tr.getAttribute('data-id'), tr);
   });
 
   // Auto-refresh invite list every 30 seconds once connected.

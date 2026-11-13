@@ -29,9 +29,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (employeeId, pin) => {
+  const login = async (email, password) => {
     try {
-      const response = await authAPI.login({ employee_id: employeeId, pin });
+      const response = await authAPI.login({ email, password });
       const { token: newToken, user: userData } = response;
 
       await AsyncStorage.setItem('auth_token', newToken);
@@ -47,6 +47,17 @@ export const AuthProvider = ({ children }) => {
         error: error.response?.data?.error || error.message || 'Login failed'
       };
     }
+  };
+
+  const updateUser = async (partial) => {
+    const merged = { ...user, ...partial };
+    setUser(merged);
+    try {
+      await AsyncStorage.setItem('auth_user', JSON.stringify(merged));
+    } catch (error) {
+      console.error('Error persisting user:', error);
+    }
+    return merged;
   };
 
   const logout = async () => {
@@ -65,7 +76,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

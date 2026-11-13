@@ -35,6 +35,26 @@ export const authAPI = {
     const response = await api.post('/auth/logout');
     return response.data;
   },
+
+  register: async (payload) => {
+    const response = await api.post('/auth/register', payload);
+    return response.data;
+  },
+
+  verifyOtp: async (payload) => {
+    const response = await api.post('/auth/verify-otp', payload);
+    return response.data;
+  },
+
+  resendOtp: async (payload) => {
+    const response = await api.post('/auth/resend-otp', payload);
+    return response.data;
+  },
+
+  setupPassword: async (payload) => {
+    const response = await api.post('/auth/setup-password', payload);
+    return response.data;
+  },
 };
 
 export const napsAPI = {

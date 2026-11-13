@@ -6,11 +6,13 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import OtpScreen from './src/screens/OtpScreen';
 import PasswordSetupScreen from './src/screens/PasswordSetupScreen';
 import NapMapScreen from './src/screens/NapMapScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
 
 function Root() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [screen, setScreen] = useState('login'); // 'login' | 'register' | 'otp'
   const [otpEmail, setOtpEmail] = useState('');
+  const [view, setView] = useState('dashboard'); // 'dashboard' | 'map'
 
   if (loading) {
     return (
@@ -20,8 +22,16 @@ function Root() {
     );
   }
 
+  const handleLogout = () => {
+    setView('dashboard');
+    logout();
+  };
+
   if (user) {
-    return user.must_change_password ? <PasswordSetupScreen /> : <NapMapScreen />;
+    if (user.must_change_password) return <PasswordSetupScreen />;
+    return view === 'map'
+      ? <NapMapScreen />
+      : <DashboardScreen onOpenMap={() => setView('map')} onLogout={handleLogout} />;
   }
 
   if (screen === 'register') {

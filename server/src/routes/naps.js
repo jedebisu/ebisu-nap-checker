@@ -158,8 +158,6 @@ router.get('/stats/summary', async (req, res) => {
         SUM(vacant_lines) as available_ports,
         MAX(updated_at) as last_data_update
       FROM naps
-      WHERE dp_nap_lat BETWEEN 9.5 AND 12.5
-        AND dp_nap_long BETWEEN 122 AND 127
     `);
 
     res.json({ ...result.rows[0], nap_report_date: napReportDate });

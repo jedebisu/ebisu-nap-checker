@@ -214,7 +214,7 @@ router.post('/register', async (req, res) => {
       [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
     );
 
-    // Send OTP email (stub until Task 7 wires Resend).
+    // Send OTP email via Resend (falls back to in-memory log under test).
     await sendOtpEmail(email, otp);
 
     res.json({ ok: true, message: `OTP sent to ${email}` });
@@ -328,7 +328,7 @@ router.post('/verify-otp', async (req, res) => {
       client.release();
     }
 
-    // Email the temp password (stub until Task 7 wires Resend).
+    // Email the temp password via Resend (falls back to in-memory log under test).
     await sendTempPasswordEmail(email, tempPassword);
 
     res.json({ ok: true, message: `Temporary password sent to ${email}` });

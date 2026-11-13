@@ -1,6 +1,6 @@
 // Registration / invitation-key / OTP / lockout suite.
 // Uses the shared dev database (gmaps_demo); rows are suffixed per run and
-// cleaned up afterwards. The email service is the Task 6 stub — tests inspect
+// cleaned up afterwards. The email service runs in test-fallback mode — tests inspect
 // its module-scoped `sentEmails` log array for the OTPs and temp passwords.
 //
 // Note on the exhausted-key race group: the invite use is claimed exactly once

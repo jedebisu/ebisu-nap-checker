@@ -165,6 +165,21 @@ describe('Auth Endpoints', () => {
         .send({ email: actualEmail, password: 'TestPass1!' });
       expect(loginRes.status).toBe(200);
       expect(loginRes.body.user.must_change_password).toBe(true);
+
+      // The login route must persist a sessions row for the issued token.
+      const sessionResult = await pool.query(
+        `SELECT user_id, expires_at FROM sessions WHERE token = $1`,
+        [loginRes.body.token]
+      );
+      expect(sessionResult.rows).toHaveLength(1);
+      expect(sessionResult.rows[0].user_id).toBe(userResult.rows[0].id);
+      const expiresAt = new Date(sessionResult.rows[0].expires_at).getTime();
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      expect(expiresAt).toBeGreaterThan(now + 29 * dayMs);
+      expect(expiresAt).toBeLessThan(now + 31 * dayMs);
+      // No explicit cleanup needed: cleanupTestUsers() deletes sessions whose
+      // user_id belongs to a suffixed temp user from this run.
     });
   });
 

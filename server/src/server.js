@@ -64,6 +64,9 @@ app.use(generalLimiter);
 app.use('/api', writeLimiter);
 
 // --- Routes ---
+const authRouter = require('./routes/auth');
+app.use('/api/auth', authRouter);
+
 const napsRouter = require('./routes/naps');
 app.use('/api/naps', authenticateToken, napsRouter);
 

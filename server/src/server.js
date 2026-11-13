@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('./config/database');
+const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -63,6 +64,9 @@ app.use(generalLimiter);
 app.use('/api', writeLimiter);
 
 // --- Routes ---
+const napsRouter = require('./routes/naps');
+app.use('/api/naps', authenticateToken, napsRouter);
+
 // Placeholder health endpoint until routes are wired up in later tasks.
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

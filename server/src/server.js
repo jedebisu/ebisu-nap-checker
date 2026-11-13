@@ -1,9 +1,10 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('./config/database');
-const { authenticateToken } = require('./middleware/auth');
+const { authenticateToken, requireAdminToken } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,6 +67,15 @@ app.use('/api', writeLimiter);
 // --- Routes ---
 const authRouter = require('./routes/auth');
 app.use('/api/auth', authRouter);
+
+// Admin console: static page is public (the API behind it requires the
+// ADMIN_TOKEN bearer).
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
+});
+
+const adminRouter = require('./routes/admin');
+app.use('/api/admin', requireAdminToken, adminRouter);
 
 const napsRouter = require('./routes/naps');
 app.use('/api/naps', authenticateToken, napsRouter);

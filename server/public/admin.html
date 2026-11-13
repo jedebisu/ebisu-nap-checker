@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G-MAPS Admin Console</title>
+<style>
+  :root {
+    --globe-blue: #00539B;
+    --globe-blue-dark: #003D71;
+    --globe-blue-light: #E8F1F8;
+    --globe-blue-mid: #2E75B5;
+    --ink: #1A2A3A;
+    --muted: #5A6B7C;
+    --border: #C9D8E4;
+    --ok: #0E7A3D;
+    --warn: #B45309;
+    --bad: #B91C1C;
+    --card: #FFFFFF;
+    --bg: #F3F7FB;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  header {
+    background: linear-gradient(135deg, var(--globe-blue-dark), var(--globe-blue));
+    color: #fff;
+    padding: 28px 32px 24px;
+  }
+  header h1 { margin: 0; font-size: 1.5rem; letter-spacing: 0.02em; }
+  header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.9rem; }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 64px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 61, 113, 0.08);
+    padding: 20px 22px;
+    margin-bottom: 22px;
+  }
+  .card h2 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    color: var(--globe-blue-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.85rem;
+  }
+  .card .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 14px; }
+
+  /* Token bar */
+  #token-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #token-bar input[type="password"] {
+    flex: 1 1 260px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+  }
+  #token-status { font-size: 0.85rem; color: var(--muted); min-width: 140px; }
+  #token-status.ok { color: var(--ok); font-weight: 600; }
+  #token-status.bad { color: var(--bad); font-weight: 600; }
+
+  button {
+    font: inherit;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    cursor: pointer;
+    background: var(--globe-blue);
+    color: #fff;
+    font-weight: 600;
+    transition: background 0.15s ease;
+  }
+  button:hover { background: var(--globe-blue-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: var(--globe-blue-light);
+    color: var(--globe-blue-dark);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: #D8E7F2; }
+  button.danger { background: var(--bad); }
+  button.danger:hover { background: #991B1B; }
+  button.small { padding: 6px 12px; font-size: 0.82rem; }
+
+  /* Forms */
+  .form-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+  input[type="number"], input[type="datetime-local"], input[type="text"] {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+  }
+  input[type="number"] { width: 110px; }
+
+  /* Generated code display */
+  #code-result { margin-top: 14px; display: none; }
+  .code-line { display: flex; gap: 10px; align-items: center; }
+  #generated-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 1.1rem;
+    letter-spacing: 0.08em;
+    padding: 10px 14px;
+    border: 2px dashed var(--globe-blue-mid);
+    border-radius: 8px;
+    background: var(--globe-blue-light);
+    color: var(--globe-blue-dark);
+    width: 240px;
+  }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th {
+    background: var(--globe-blue-light);
+    color: var(--globe-blue-dark);
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+  }
+  tbody tr:hover { background: #F8FBFE; }
+  .empty { color: var(--muted); font-size: 0.88rem; padding: 14px 4px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .pill.valid { background: #DCFCE7; color: var(--ok); }
+  .pill.expired { background: #FEE2E2; color: var(--bad); }
+  .pill.drained { background: #FEF3C7; color: var(--warn); }
+
+  .msg { font-size: 0.85rem; margin-top: 10px; min-height: 1.2em; }
+  .msg.ok { color: var(--ok); }
+  .msg.bad { color: var(--bad); }
+
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .refresh-note { color: var(--muted); font-size: 0.75rem; }
+
+  @media (max-width: 640px) {
+    header { padding: 20px 18px; }
+    main { padding: 16px 12px 48px; }
+    .card { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>G-MAPS Admin Console</h1>
+  <p>Invite codes and account lockouts. Internal use only.</p>
+</header>
+
+<main>
+
+  <!-- Token gate -->
+  <section class="card" aria-label="Admin token">
+    <h2>Admin Access</h2>
+    <p class="sub">Enter the admin token to use the console. The token is kept in memory only and is never stored.</p>
+    <form id="token-bar">
+      <input type="password" id="admin-token" placeholder="Admin token" autocomplete="off" aria-label="Admin token">
+      <button type="submit">Connect</button>
+      <span id="token-status" role="status">Not connected</span>
+    </form>
+  </section>
+
+  <!-- Panel A: generate invite -->
+  <section class="card" aria-label="Generate invite code">
+    <h2>Panel A — Generate Invite Code</h2>
+    <p class="sub">Create a new invite code for field team registrations.</p>
+    <form id="generate-form" class="form-row">
+      <div>
+        <label for="max-uses">Number of uses</label>
+        <input type="number" id="max-uses" min="1" step="1" value="10" required>
+      </div>
+      <div>
+        <label for="expires-at">Expiry (optional)</label>
+        <input type="datetime-local" id="expires-at">
+      </div>
+      <button type="submit" id="generate-btn" disabled>Generate code</button>
+    </form>
+    <div id="code-result">
+      <label for="generated-code" style="margin-top:14px;">New invite code</label>
+      <div class="code-line">
+        <input type="text" id="generated-code" class="mono" readonly>
+        <button type="button" class="secondary" id="copy-btn">Copy</button>
+      </div>
+    </div>
+    <div class="msg" id="generate-msg" role="status"></div>
+  </section>
+
+  <!-- Panel B: invite list -->
+  <section class="card" aria-label="Invite codes">
+    <div class="panel-head">
+      <div>
+        <h2>Panel B — Invite Codes</h2>
+        <p class="sub" style="margin-bottom:0;">All codes issued so far.</p>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="refresh-note">Auto-refreshes every 30 seconds</span>
+        <button type="button" class="secondary small" id="refresh-invites-btn" disabled>Refresh now</button>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table id="invites-table" aria-label="Invite codes">
+        <thead>
+          <tr><th>Code</th><th>Max uses</th><th>Used</th><th>Status</th><th>Created</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="invites-empty">Connect with your admin token to load invite codes.</div>
+    </div>
+    <div class="msg" id="invites-msg" role="status"></div>
+  </section>
+
+  <!-- Panel C: locked accounts -->
+  <section class="card" aria-label="Locked accounts">
+    <div class="panel-head">
+      <div>
+        <h2>Panel C — Locked Accounts</h2>
+        <p class="sub" style="margin-bottom:0;">Accounts locked out by failed sign-in attempts, or with recent failures.</p>
+      </div>
+      <button type="button" class="secondary small" id="refresh-lockouts-btn" disabled>Refresh now</button>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table id="lockouts-table" aria-label="Locked accounts">
+        <thead>
+          <tr><th>Email</th><th>Locked until</th><th>Time remaining</th><th>Fail count</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="lockouts-empty">Connect with your admin token to load locked accounts.</div>
+    </div>
+    <div class="msg" id="lockouts-msg" role="status"></div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // Token lives in memory only — never localStorage/sessionStorage/cookies.
+  let adminToken = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function setMsg(id, text, kind) {
+    var el = $(id);
+    el.textContent = text || '';
+    el.className = 'msg' + (kind ? ' ' + kind : '');
+  }
+
+  function setConnected(connected) {
+    $('generate-btn').disabled = !connected;
+    $('refresh-invites-btn').disabled = !connected;
+    $('refresh-lockouts-btn').disabled = !connected;
+  }
+
+  async function api(path, options) {
+    var opts = options || {};
+    opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    if (adminToken) opts.headers['Authorization'] = 'Bearer ' + adminToken;
+    var res = await fetch(path, opts);
+    var body = null;
+    try { body = await res.json(); } catch (_e) { /* non-JSON body */ }
+    return { status: res.status, body: body };
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function timeRemaining(iso) {
+    if (!iso) return 'Not time-locked';
+    var ms = new Date(iso).getTime() - Date.now();
+    if (isNaN(ms)) return '—';
+    if (ms <= 0) return 'Expired';
+    var totalMin = Math.floor(ms / 60000);
+    var h = Math.floor(totalMin / 60);
+    var m = totalMin % 60;
+    if (h > 0) return 'about ' + h + 'h ' + m + 'm left';
+    if (m > 0) return 'about ' + m + 'm left';
+    return 'less than a minute left';
+  }
+
+  function inviteStatus(row) {
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return 'Expired';
+    if (Number(row.used_count) >= Number(row.max_uses)) return 'Drained';
+    return 'Valid';
+  }
+
+  function pillClass(status) {
+    return status === 'Valid' ? 'valid' : status === 'Expired' ? 'expired' : 'drained';
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // --- Token connect ---
+  $('token-bar').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var value = $('admin-token').value.trim();
+    if (!value) return;
+    adminToken = value;
+    var status = $('token-status');
+    status.textContent = 'Checking…';
+    status.className = '';
+    var res = await api('/api/admin/invites');
+    if (res.status === 200) {
+      status.textContent = 'Connected';
+      status.className = 'ok';
+      setConnected(true);
+      renderInvites(res.body || []);
+      loadLockouts();
+    } else if (res.status === 401) {
+      status.textContent = 'Invalid token';
+      status.className = 'bad';
+      adminToken = null;
+      setConnected(false);
+    } else {
+      status.textContent = 'Error (' + res.status + ')';
+      status.className = 'bad';
+      adminToken = null;
+      setConnected(false);
+    }
+  });
+
+  // --- Panel A: generate invite ---
+  $('generate-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!adminToken) return;
+    setMsg('generate-msg', '');
+    var uses = parseInt($('max-uses').value, 10);
+    if (!Number.isInteger(uses) || uses < 1) {
+      setMsg('generate-msg', 'Number of uses must be a positive whole number.', 'bad');
+      return;
+    }
+    var payload = { max_uses: uses };
+    var expiryRaw = $('expires-at').value;
+    if (expiryRaw) payload.expires_at = new Date(expiryRaw).toISOString();
+
+    var btn = $('generate-btn');
+    btn.disabled = true;
+    try {
+      var res = await api('/api/admin/invites', { method: 'POST', body: JSON.stringify(payload) });
+      if (res.status === 200 && res.body && res.body.code) {
+        $('generated-code').value = res.body.code;
+        $('code-result').style.display = 'block';
+        setMsg('generate-msg', 'Invite code created. Share it with the field team.', 'ok');
+        loadInvites();
+      } else {
+        setMsg('generate-msg', (res.body && res.body.error) || ('Could not create invite code (error ' + res.status + ').'), 'bad');
+      }
+    } catch (_err) {
+      setMsg('generate-msg', 'Network error — please try again.', 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('copy-btn').addEventListener('click', async function () {
+    var code = $('generated-code').value;
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setMsg('generate-msg', 'Copied to clipboard.', 'ok');
+    } catch (_err) {
+      // Fallback for older browsers / non-secure contexts.
+      var box = $('generated-code');
+      box.select();
+      try { document.execCommand('copy'); setMsg('generate-msg', 'Copied to clipboard.', 'ok'); }
+      catch (_e2) { setMsg('generate-msg', 'Select the code and press Ctrl/Cmd+C to copy.', 'bad'); }
+    }
+  });
+
+  // --- Panel B: invite list ---
+  function renderInvites(rows) {
+    var tbody = document.querySelector('#invites-table tbody');
+    var empty = $('invites-empty');
+    tbody.innerHTML = '';
+    if (!Array.isArray(rows) || rows.length === 0) {
+      empty.textContent = 'No invite codes yet. Generate one above.';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    rows.forEach(function (row) {
+      var status = inviteStatus(row);
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="mono">' + escapeHtml(row.code) + '</td>' +
+        '<td>' + escapeHtml(row.max_uses) + '</td>' +
+        '<td>' + escapeHtml(row.used_count) + '</td>' +
+        '<td><span class="pill ' + pillClass(status) + '">' + status + '</span></td>' +
+        '<td>' + escapeHtml(fmtDate(row.created_at)) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadInvites() {
+    if (!adminToken) return;
+    var res = await api('/api/admin/invites');
+    if (res.status === 200) {
+      renderInvites(res.body || []);
+      setMsg('invites-msg', '');
+    } else if (res.status === 401) {
+      setMsg('invites-msg', 'Admin token expired or invalid — reconnect above.', 'bad');
+    } else {
+      setMsg('invites-msg', 'Could not load invite codes (error ' + res.status + ').', 'bad');
+    }
+  }
+
+  $('refresh-invites-btn').addEventListener('click', loadInvites);
+
+  // --- Panel C: locked accounts ---
+  function renderLockouts(rows) {
+    var tbody = document.querySelector('#lockouts-table tbody');
+    var empty = $('lockouts-empty');
+    tbody.innerHTML = '';
+    if (!Array.isArray(rows) || rows.length === 0) {
+      empty.textContent = 'No locked accounts right now.';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    rows.forEach(function (row) {
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-email', row.email || '');
+      tr.innerHTML =
+        '<td>' + escapeHtml(row.email) + '</td>' +
+        '<td>' + escapeHtml(fmtDate(row.locked_until)) + '</td>' +
+        '<td>' + escapeHtml(timeRemaining(row.locked_until)) + '</td>' +
+        '<td>' + escapeHtml(row.otp_fail_count) + '</td>' +
+        '<td><button type="button" class="danger small unlock-btn">Unlock</button></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadLockouts() {
+    if (!adminToken) return;
+    var res = await api('/api/admin/lockouts');
+    if (res.status === 200) {
+      renderLockouts(res.body || []);
+      setMsg('lockouts-msg', '');
+    } else if (res.status === 401) {
+      setMsg('lockouts-msg', 'Admin token expired or invalid — reconnect above.', 'bad');
+    } else {
+      setMsg('lockouts-msg', 'Could not load locked accounts (error ' + res.status + ').', 'bad');
+    }
+  }
+
+  $('refresh-lockouts-btn').addEventListener('click', loadLockouts);
+
+  document.querySelector('#lockouts-table tbody').addEventListener('click', async function (e) {
+    var btn = e.target.closest('.unlock-btn');
+    if (!btn) return;
+    var tr = btn.closest('tr');
+    var email = tr.getAttribute('data-email');
+    if (!email) return;
+    btn.disabled = true;
+    btn.textContent = 'Unlocking…';
+    var res = await api('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ email: email }) });
+    if (res.status === 200) {
+      tr.remove();
+      setMsg('lockouts-msg', 'Unlocked ' + email + '.', 'ok');
+      var tbody = document.querySelector('#lockouts-table tbody');
+      if (tbody.children.length === 0) {
+        $('lockouts-empty').textContent = 'No locked accounts right now.';
+        $('lockouts-empty').style.display = 'block';
+      }
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Unlock';
+      setMsg('lockouts-msg', (res.body && res.body.error) || ('Could not unlock ' + email + ' (error ' + res.status + ').'), 'bad');
+    }
+  });
+
+  // Auto-refresh invite list every 30 seconds once connected.
+  setInterval(function () {
+    if (adminToken) loadInvites();
+  }, 30000);
+})();
+</script>
+</body>
+</html>

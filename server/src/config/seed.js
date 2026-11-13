@@ -11,7 +11,6 @@ const seedData = async () => {
     const salt = await bcrypt.genSalt(10);
     const users = [
       {
-        employee_id: 'GMAPS001',
         firstname: 'Demo',
         lastname: 'One',
         email: 'demo1@ebisudps.com',
@@ -20,7 +19,6 @@ const seedData = async () => {
         must_change_password: false,
       },
       {
-        employee_id: 'GMAPS002',
         firstname: 'Demo',
         lastname: 'Two',
         email: 'demo2@ebisudps.com',
@@ -32,11 +30,9 @@ const seedData = async () => {
 
     for (const u of users) {
       const hashed = await bcrypt.hash(u.password, salt);
-      // Use upsert: insert new rows, or update existing ones by email.
-      // Coalesce handles tables that may lack firstname/lastname (original EBISU schema).
       await client.query(
-        `INSERT INTO users (employee_id, firstname, lastname, email, phone, password_hash, must_change_password, is_active, role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'user')
+        `INSERT INTO users (firstname, lastname, email, phone, password_hash, must_change_password, is_active, role)
+         VALUES ($1, $2, $3, $4, $5, $6, true, 'user')
          ON CONFLICT (email) DO UPDATE SET
            firstname            = EXCLUDED.firstname,
            lastname             = EXCLUDED.lastname,
@@ -44,7 +40,7 @@ const seedData = async () => {
            password_hash        = EXCLUDED.password_hash,
            must_change_password = EXCLUDED.must_change_password,
            is_active            = true`,
-        [u.employee_id, u.firstname, u.lastname, u.email, u.phone, hashed, u.must_change_password]
+        [u.firstname, u.lastname, u.email, u.phone, hashed, u.must_change_password]
       );
     }
 

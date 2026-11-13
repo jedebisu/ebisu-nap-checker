@@ -7,7 +7,7 @@ const createTables = async () => {
   try {
     await client.query('BEGIN');
 
-    // Users table (demo-adapted: no employee_id column; name computed from
+    // Users table (demo-adapted: no employee_id; name computed from
     // firstname || lastname in auth middleware).
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -27,74 +27,7 @@ const createTables = async () => {
       )
     `);
 
-    // Backward-compat: add demo columns if they're missing (e.g. when migrating
-    // an existing selfie-attendance users table that still has employee_id/name/pin).
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS firstname VARCHAR(100);
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS lastname VARCHAR(100);
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false;
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_fail_count INT DEFAULT 0;
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_tier INT DEFAULT 0;
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$;
-    `);
-
-    // Make name nullable — demo uses firstname/lastname instead.
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ALTER COLUMN name DROP NOT NULL;
-      EXCEPTION WHEN undefined_column OR others THEN null;
-      END $$;
-    `);
-
-    // Make pin nullable — demo uses password_hash for bcrypt auth.
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TABLE users ALTER COLUMN pin DROP NOT NULL;
-      EXCEPTION WHEN undefined_column OR others THEN null;
-      END $$;
-    `);
-
-    // Sessions table for JWT tracking. Shape mirrors EBISU's original.
+    // Sessions table for JWT tracking.
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY,
@@ -131,7 +64,6 @@ const createTables = async () => {
       )
     `);
 
-    // Add barangay_name column if it doesn't exist (for existing databases)
     await client.query(`
       DO $$ BEGIN
         ALTER TABLE naps ADD COLUMN IF NOT EXISTS barangay_name VARCHAR(100);

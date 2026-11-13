@@ -16,18 +16,17 @@ if (!JWT_SECRET) {
 const ACTIVE_JWT_SECRET = JWT_SECRET || 'dev-only-insecure-secret';
 
 // Rate limit: 5 login attempts per minute per IP (EBISU-style).
-// Skip during automated tests to avoid flaky 429 responses.
+// Overridable via AUTH_LOGIN_RATE_LIMIT_MAX so the shared auth suite can run
+// many logins without tripping the limiter; the dedicated rate-limit test
+// exercises the default of 5. Not skipped in tests.
+const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX || '5', 10);
 const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  limit: LOGIN_RATE_LIMIT_MAX,
   message: { error: 'Too many login attempts. Try again in 1 minute.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID,
 });
-
-// Password-strength regex — mirrors the mobile contract.
-const PASSWORD_REGEX = /(?=.{8,})(?=.*[A-Z])(?=.*[^A-Za-z0-9])/;
 
 // POST /api/auth/login
 // Request body: { email, password }

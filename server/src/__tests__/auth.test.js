@@ -1,3 +1,9 @@
+// This suite performs many logins from 127.0.0.1; raise the per-IP login
+// rate limit so it doesn't trip. The dedicated auth.rate-limit.test.js
+// exercises the real 5/min default. Must be set before ../server is loaded.
+process.env.AUTH_LOGIN_RATE_LIMIT_MAX = '1000';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-jwt-secret';
+
 const request = require('supertest');
 const { app, pool } = require('../server');
 const jwt = require('jsonwebtoken');
@@ -21,7 +27,9 @@ const insertTestUser = async (email, mustChangePassword = false) => {
       `VALUES ('Test', 'User', $1, $2, $3, true, 'user')`,
       [uniqueEmail, hashedPassword, mustChangePassword]
     );
-    return client.query(
+    // Await inside the try so the client is not returned to the pool
+    // while this query is still in flight.
+    return await client.query(
       `SELECT id FROM users WHERE email = $1`,
       [uniqueEmail]
     );
@@ -78,7 +86,8 @@ describe('Auth Endpoints', () => {
 
   afterAll(async () => {
     await cleanupTestUsers();
-  });
+    await pool.end();
+  }, 15000);
 
   describe('POST /api/auth/login', () => {
     it('should return 401 for wrong password', async () => {
@@ -118,9 +127,15 @@ describe('Auth Endpoints', () => {
         expect(res.body).toEqual({ error: 'Invalid credentials' });
       } finally {
         // Restore is_active so subsequent tests aren't affected.
-        await client.query(
-          `UPDATE users SET is_active = true WHERE email = 'demo1@ebisudps.com'`
-        );
+        try {
+          await client.query(
+            `UPDATE users SET is_active = true WHERE email = 'demo1@ebisudps.com'`
+          );
+        } finally {
+          // Return the client to the pool; without this the suite leaks a
+          // checked-out client and the pool never drains.
+          client.release();
+        }
       }
     });
 

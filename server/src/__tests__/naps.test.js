@@ -1,3 +1,5 @@
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-jwt-secret';
+
 const request = require('supertest');
 const { app, pool } = require('../server');
 const jwt = require('jsonwebtoken');
@@ -6,27 +8,34 @@ const bcrypt = require('bcryptjs');
 // Resolve the same secret the middleware uses.
 const ACTIVE_JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 
-// Helper: ensure demo1 user exists, sign a JWT, insert a sessions row.
-const loginDemo1 = async () => {
+// Dedicated user for this file. Do NOT reuse demo1@ebisudps.com — auth tests
+// toggle demo1's is_active in parallel workers, which would 401 these
+// authenticated requests intermittently.
+const NAPS_TEST_EMAIL = 'naps-test@example.com';
+
+// Helper: ensure the dedicated naps test user exists, sign a JWT, insert a sessions row.
+const loginNapsTestUser = async () => {
   const client = await pool.connect();
   try {
-    // Insert demo user if not exists
+    // Insert test user if not exists
     const userResult = await client.query(
-      `SELECT id FROM users WHERE email = 'demo1@ebisudps.com'`
+      `SELECT id FROM users WHERE email = $1`,
+      [NAPS_TEST_EMAIL]
     );
 
     if (userResult.rows.length === 0) {
       const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash('DemoPass1!', salt);
+      const hashedPassword = await bcrypt.hash('NapsTest1!', salt);
       await client.query(
         `INSERT INTO users (firstname, lastname, email, password_hash, must_change_password, is_active, role) ` +
-        `VALUES ('Demo', 'One', 'demo1@ebisudps.com', $1, false, true, 'user')`,
-        [hashedPassword]
+        `VALUES ('Naps', 'Test', $1, $2, false, true, 'user')`,
+        [NAPS_TEST_EMAIL, hashedPassword]
       );
     }
 
     const user = await client.query(
-      `SELECT id FROM users WHERE email = 'demo1@ebisudps.com'`
+      `SELECT id FROM users WHERE email = $1`,
+      [NAPS_TEST_EMAIL]
     );
 
     const token = jwt.sign(
@@ -116,22 +125,38 @@ const cleanupTestData = async () => {
   try {
     await client.query('DELETE FROM naps WHERE nap_id IN ($1, $2, $3)', ['NAP001', 'NAP002', 'NAP003']);
     await client.query(
-      `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = 'demo1@ebisudps.com')`
+      `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
+      [NAPS_TEST_EMAIL]
     );
+    await client.query('DELETE FROM users WHERE email = $1', [NAPS_TEST_EMAIL]);
   } finally {
     client.release();
   }
 };
 
-// Test setup — insert fixtures once before all tests
+// Baseline total_naps captured before fixtures are inserted, so the
+// stats assertion holds even when the database already contains a full
+// NAP import.
+let baselineTotalNaps = 0;
+
+// Test setup — capture baseline, then insert fixtures once before all tests
 beforeAll(async () => {
+  const token = await loginNapsTestUser();
+  const baselineRes = await request(app)
+    .get('/api/naps/stats/summary')
+    .set('Authorization', `Bearer ${token}`);
+  expect(baselineRes.status).toBe(200);
+  baselineTotalNaps = baselineRes.body.total_naps;
+  expect(typeof baselineTotalNaps).toBe('number');
+
   await insertTestNAPs();
 });
 
-// Test teardown — remove fixtures after all tests
+// Test teardown — remove fixtures and the dedicated user after all tests
 afterAll(async () => {
   await cleanupTestData();
-});
+  await pool.end();
+}, 15000);
 
 // Test cases
 describe('NAP Endpoints', () => {
@@ -144,15 +169,15 @@ describe('NAP Endpoints', () => {
     let token;
 
     beforeAll(async () => {
-      token = await loginDemo1();
+      token = await loginNapsTestUser();
     });
 
-    it('should return stats/summary with total_naps: 3', async () => {
+    it('should return stats/summary with total_naps increased by 3', async () => {
       const res = await request(app)
         .get('/api/naps/stats/summary')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.total_naps).toBe(3);
+      expect(res.body.total_naps).toBe(baselineTotalNaps + 3);
     });
 
     it('should return nearest NAPs ordered by distance', async () => {

@@ -63,7 +63,7 @@ const getMarkerColor = (vacantLines) => {
 };
 
 const NapMapScreen = () => {
-  const { user } = useAuth();
+  const { logout } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -562,6 +562,13 @@ const NapMapScreen = () => {
     }
   }, [fetchNearbyNaps, startLiveWatcher]);
 
+  const confirmLogout = () => {
+    Alert.alert('Log out', 'Log out of G-MAPS?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => logout() },
+    ]);
+  };
+
   const renderNapMarker = useCallback((nap) => {
     const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
     if (!c) return null;
@@ -650,8 +657,21 @@ const NapMapScreen = () => {
       >
         {/* Brand header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>G-MAPS</Text>
-          <Text style={styles.headerSubtitle}>NAP FACILITY MAP</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>G-MAPS</Text>
+            <Text style={styles.headerSubtitle}>NAP FACILITY MAP</Text>
+          </View>
+          <TouchableOpacity
+            onPress={confirmLogout}
+            style={styles.logoutButton}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            accessibilityHint="Log out of G-MAPS and return to the sign-in screen"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#fff" />
+          </TouchableOpacity>
         </View>
 
         {/* Search bar */}
@@ -972,7 +992,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.primary,
     borderRadius: 10,
@@ -985,6 +1005,22 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexShrink: 1,
+  },
+  logoutButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#003A6B',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
   headerTitle: {
     color: '#fff',
     fontSize: 17,
@@ -996,6 +1032,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 1.5,
+    marginLeft: 10,
   },
   searchContainer: {
     flexDirection: 'row',

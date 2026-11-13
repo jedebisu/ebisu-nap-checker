@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "EBISU T&A",
-    "slug": "selfie-attendance",
-    "version": "1.4.7.0",
+    "name": "G-MAPS",
+    "slug": "gmaps",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "resizeMode": "cover",
+      "backgroundColor": "#00539B"
     },
     "assetBundlePatterns": [
       "assets/**/*"
@@ -17,22 +17,17 @@
     "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jedebisu.selfieattendance",
+      "bundleIdentifier": "com.gmaps.demo",
       "infoPlist": {
-        "NSCameraUsageDescription": "We need camera access to take attendance photos",
-        "NSLocationWhenInUseUsageDescription": "We need your location to record your attendance clock in and out",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Your location is tracked in the background only while you are clocked in, so the office can verify work locations",
-        "UIBackgroundModes": [
-          "location"
-        ]
+        "NSLocationWhenInUseUsageDescription": "We need your location to show NAPs near you"
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#00539B"
       },
-      "package": "com.jedebisu.selfieattendance",
+      "package": "com.gmaps.demo",
       "enableDangerousExperimentalLeanBuilds": true,
       "minSdkVersion": 21,
       "config": {
@@ -41,23 +36,11 @@
         }
       },
       "permissions": [
-        "CAMERA",
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "RECEIVE_BOOT_COMPLETED",
-        "SCHEDULE_EXACT_ALARM"
+        "ACCESS_FINE_LOCATION"
       ],
-      "versionCode": 41
+      "versionCode": 1
     },
-    "plugins": [],
-    "extra": {
-      "eas": {
-        "projectId": "72936711-ce2c-4e50-bcac-9e76c80abd4c"
-      }
-    },
-    "owner": "jedebisu"
+    "plugins": []
   }
 }

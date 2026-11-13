@@ -22,7 +22,6 @@ const COLORS = {
   dark: '#1a1d23',
   gray: '#6b7280',
   lightGray: '#e5e7eb',
-  blue: '#3b82f6',
   pin: '#7c3aed',
 };
 
@@ -649,6 +648,12 @@ const NapMapScreen = () => {
         style={styles.searchStack}
         onLayout={(e) => setSearchStackHeight(e.nativeEvent.layout.height)}
       >
+        {/* Brand header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>G-MAPS</Text>
+          <Text style={styles.headerSubtitle}>NAP FACILITY MAP</Text>
+        </View>
+
         {/* Search bar */}
         <View style={styles.searchContainer}>
           <TextInput
@@ -773,7 +778,7 @@ const NapMapScreen = () => {
         {routePoints.length > 0 && (
           <Polyline
             coordinates={routePoints}
-            strokeColor={COLORS.blue}
+            strokeColor={COLORS.primary}
             strokeWidth={4}
           />
         )}
@@ -965,6 +970,33 @@ const styles = StyleSheet.create({
     right: 12,
     zIndex: 20,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 2.5,
+  },
+  headerSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1048,7 +1080,7 @@ const styles = StyleSheet.create({
   listToggle: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: COLORS.dark,
+    backgroundColor: COLORS.primary,
     borderRadius: 6,
   },
   listToggleText: {
@@ -1087,16 +1119,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 246, 255, 0.97)',
+    backgroundColor: 'rgba(229, 240, 250, 0.97)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: COLORS.blue,
+    borderColor: COLORS.primary,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   pinBannerText: {
     fontSize: 12,
-    color: COLORS.blue,
+    color: COLORS.primary,
     fontWeight: '600',
   },
   pinBannerClear: {
@@ -1259,7 +1291,7 @@ const styles = StyleSheet.create({
   expandText: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.blue,
+    color: COLORS.primary,
     marginLeft: 8,
     paddingVertical: 6,
     paddingLeft: 8,

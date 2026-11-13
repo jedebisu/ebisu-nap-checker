@@ -25,7 +25,7 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.logoContainer}>
           <View style={styles.logoWrap}>
-            <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+            <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
           </View>
           <Text style={styles.title}>G-MAPS</Text>
           <Text style={styles.subtitle}>NAP Facility Map</Text>
@@ -77,10 +77,10 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: { flex: 1, backgroundColor: '#E5F0FA' },
   bgAccent: {
     position: 'absolute', top: 0, left: 0, right: 0, height: 320,
-    backgroundColor: '#1a1d23', borderBottomLeftRadius: 40, borderBottomRightRadius: 40,
+    backgroundColor: '#00539B', borderBottomLeftRadius: 40, borderBottomRightRadius: 40,
   },
   content: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, marginTop: 40 },
   logoContainer: { alignItems: 'center', marginBottom: 48 },
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb', color: '#1a1d23',
   },
   button: {
-    backgroundColor: '#1a1d23', padding: 18, borderRadius: 14, alignItems: 'center', marginTop: 8,
+    backgroundColor: '#00539B', padding: 18, borderRadius: 14, alignItems: 'center', marginTop: 8,
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 1 },

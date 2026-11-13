@@ -8,7 +8,8 @@
     "dev": "nodemon src/server.js",
     "db:migrate": "node src/config/migrate.js",
     "db:seed": "node src/config/seed.js",
-    "test": "jest --forceExit --detectOpenHandles"
+    "test": "jest --forceExit --detectOpenHandles",
+    "naps:import": "node scripts/import-naps.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

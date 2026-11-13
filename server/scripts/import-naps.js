@@ -8,14 +8,17 @@ const { pool } = require('../src/config/database');
 const CSV_GZ_PATH = path.join(__dirname, '..', 'src', 'config', 'naps_export.csv.gz');
 
 // Demo safety gate: the demo database is local-only. Importing into anything else
-// (in particular a production DB reachable through DATABASE_URL) is never intended.
+// (in particular a production DB reachable through DATABASE_URL) is never intended,
+// unless ALLOW_REMOTE_IMPORT=1 is set explicitly (e.g. seeding the Supabase demo
+// backend). The opt-in bypasses BOTH gates below and logs loudly when active.
 const EXPECTED_DATABASE = 'gmaps_demo';
+const REMOTE_IMPORT_OPTIN = process.env.ALLOW_REMOTE_IMPORT === '1';
 
 // 3000 rows x 17 columns = 51,000 bind parameters, under PostgreSQL's 65,535 limit.
 const BATCH_SIZE = 3000;
 
 const importNaps = async () => {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && !REMOTE_IMPORT_OPTIN) {
     throw new Error('Refusing to run: NODE_ENV=production (demo import is local-only).');
   }
   if (!fs.existsSync(CSV_GZ_PATH)) {
@@ -26,10 +29,13 @@ const importNaps = async () => {
 
   try {
     const dbName = (await client.query('SELECT current_database() AS name')).rows[0].name;
-    if (dbName !== EXPECTED_DATABASE) {
+    if (dbName !== EXPECTED_DATABASE && !REMOTE_IMPORT_OPTIN) {
       throw new Error(
         `Refusing to import into "${dbName}" — expected the local "${EXPECTED_DATABASE}" database.`
       );
+    }
+    if (REMOTE_IMPORT_OPTIN) {
+      console.log(`ALLOW_REMOTE_IMPORT=1 — remote import ACTIVE, target database: "${dbName}"`);
     }
 
     console.log(`Importing NAPs from ${path.basename(CSV_GZ_PATH)} into ${dbName}...`);

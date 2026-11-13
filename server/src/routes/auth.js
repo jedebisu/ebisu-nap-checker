@@ -3,8 +3,19 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { sendOtpEmail, sendTempPasswordEmail } = require('../services/email');
+const {
+  generateOtp,
+  hashOtp,
+  verifyOtp,
+  checkLockout,
+  escalate,
+  OTP_TTL_MINUTES,
+  LOCKOUT_TIERS,
+} = require('../services/otp');
 
 // Resolve secret the same way middleware/auth.js does.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -140,6 +151,232 @@ router.post('/setup-password', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Setup-password error:', error);
     res.status(500).json({ error: 'Password setup failed' });
+  }
+});
+
+// POST /api/auth/register
+// Request body: { firstname, lastname, email, phone, invite_code }
+// Response 200: { ok: true, message: 'OTP sent to <email>' }
+// Response 400: { error: 'Invalid invitation key' / 'Invitation key has no uses remaining' }
+router.post('/register', async (req, res) => {
+  try {
+    const { firstname, lastname, email, phone, invite_code } = req.body;
+
+    if (!firstname || !lastname || !email || !phone || !invite_code) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Check invite code (the atomic used_count claim happens at OTP
+    // verification time, inside the completion transaction).
+    const inviteResult = await pool.query(
+      `SELECT id, max_uses, used_count, expires_at FROM invite_codes WHERE code = $1`,
+      [invite_code]
+    );
+
+    if (inviteResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid invitation key' });
+    }
+
+    const invite = inviteResult.rows[0];
+    if (invite.used_count >= invite.max_uses) {
+      return res.status(400).json({ error: 'Invitation key has no uses remaining' });
+    }
+
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'Invitation key has expired' });
+    }
+
+    // Generate OTP
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
+    const otpExpiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+    // Create or replace the registration for this email.
+    await pool.query(
+      `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)
+       ON CONFLICT (email) DO UPDATE SET
+         firstname = EXCLUDED.firstname,
+         lastname = EXCLUDED.lastname,
+         phone = EXCLUDED.phone,
+         invite_code_id = EXCLUDED.invite_code_id,
+         otp_hash = EXCLUDED.otp_hash,
+         otp_expires_at = EXCLUDED.otp_expires_at,
+         otp_fail_count = 0,
+         lockout_tier = 0,
+         locked_until = NULL`,
+      [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
+    );
+
+    // Send OTP email (stub until Task 7 wires Resend).
+    await sendOtpEmail(email, otp);
+
+    res.json({ ok: true, message: `OTP sent to ${email}` });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// POST /api/auth/verify-otp
+// Request body: { email, otp }
+// Response 200: { ok: true, message: 'Temporary password sent to <email>' }
+// Response 400: { error: 'Invalid or expired OTP', lockout_minutes?: number }
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ error: 'Email and OTP are required' });
+    }
+
+    // 1. Find the registration row by email.
+    const regResult = await pool.query(
+      `SELECT id, firstname, lastname, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until
+       FROM registrations WHERE email = $1`,
+      [email]
+    );
+
+    if (regResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const registration = regResult.rows[0];
+
+    // 2. Check lockout status on that row.
+    const lockout = checkLockout(registration);
+    if (lockout.locked) {
+      return res.status(400).json({
+        error: 'Too many failed attempts. Try again later.',
+        lockout_minutes: lockout.minutesLeft,
+      });
+    }
+
+    if (new Date(registration.otp_expires_at) < new Date()) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // 3. Verify the OTP hash against the input.
+    const isValid = await verifyOtp(otp, registration.otp_hash);
+
+    if (!isValid) {
+      // 5. Wrong OTP: increment the fail counter and escalate the lockout tier.
+      const newFailCount = registration.otp_fail_count + 1;
+      const lockoutMinutes = escalate(registration.otp_fail_count);
+      const newTier = newFailCount >= 6
+        ? Math.min(newFailCount - 6, LOCKOUT_TIERS.length - 1)
+        : 0;
+      const lockedUntil = lockoutMinutes > 0
+        ? new Date(Date.now() + lockoutMinutes * 60 * 1000)
+        : null;
+
+      await pool.query(
+        `UPDATE registrations
+         SET otp_fail_count = $1, lockout_tier = $2, locked_until = $3
+         WHERE id = $4`,
+        [newFailCount, newTier, lockedUntil, registration.id]
+      );
+
+      const body = { error: 'Invalid or expired OTP' };
+      if (lockoutMinutes > 0) {
+        body.lockout_minutes = lockoutMinutes;
+      }
+      return res.status(400).json(body);
+    }
+
+    // 4. Valid OTP: atomically create the user, claim one invite use and
+    // delete the registration. If the key was exhausted by a concurrent
+    // completion, the guarded UPDATE returns 0 rows and the whole
+    // transaction aborts.
+    const tempPassword = crypto.randomBytes(8).toString('base64url') + '!A1';
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO users (firstname, lastname, email, phone, password_hash, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, true)`,
+        [registration.firstname, registration.lastname, email, registration.phone, passwordHash]
+      );
+
+      const inviteUpdateResult = await client.query(
+        `UPDATE invite_codes SET used_count = used_count + 1
+         WHERE id = $1 AND used_count < max_uses`,
+        [registration.invite_code_id]
+      );
+
+      if (inviteUpdateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Invitation key has no uses remaining' });
+      }
+
+      await client.query('DELETE FROM registrations WHERE id = $1', [registration.id]);
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    // Email the temp password (stub until Task 7 wires Resend).
+    await sendTempPasswordEmail(email, tempPassword);
+
+    res.json({ ok: true, message: `Temporary password sent to ${email}` });
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    res.status(500).json({ error: 'OTP verification failed' });
+  }
+});
+
+// POST /api/auth/resend-otp
+// Request body: { email }
+// Response 200: { ok: true, message: 'New OTP sent to <email>' }
+// Response 400: { error: 'No active registration found' }
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const regResult = await pool.query(
+      `SELECT id FROM registrations WHERE email = $1`,
+      [email]
+    );
+
+    if (regResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No active registration found' });
+    }
+
+    // Generate a fresh OTP; replaces the old hash and resets the TTL.
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
+    const otpExpiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+    await pool.query(
+      `UPDATE registrations
+       SET otp_hash = $1, otp_expires_at = $2, otp_fail_count = 0, lockout_tier = 0, locked_until = NULL
+       WHERE email = $3`,
+      [otpHash, otpExpiresAt, email]
+    );
+
+    await sendOtpEmail(email, otp);
+
+    res.json({ ok: true, message: `New OTP sent to ${email}` });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP' });
   }
 });
 

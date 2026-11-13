@@ -1,6 +1,7 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { pool } = require('./database');
+const { generateInviteCode } = require('../services/inviteCode');
 
 const seedData = async () => {
   const client = await pool.connect();
@@ -42,6 +43,23 @@ const seedData = async () => {
            is_active            = true`,
         [u.firstname, u.lastname, u.email, u.phone, hashed, u.must_change_password]
       );
+    }
+
+    // Seed a handful of single-use invitation keys (GMAPS-XXXXXXXX) if none
+    // exist yet. Codes are printed once — capture them for distribution.
+    const inviteCount = await client.query('SELECT COUNT(*)::int AS n FROM invite_codes');
+    if (inviteCount.rows[0].n === 0) {
+      const codes = [];
+      for (let i = 0; i < 5; i++) {
+        const code = generateInviteCode();
+        await client.query(
+          `INSERT INTO invite_codes (code, max_uses, used_count) VALUES ($1, 1, 0)`,
+          [code]
+        );
+        codes.push(code);
+      }
+      console.log('\nInvitation keys (single-use):');
+      codes.forEach((c) => console.log(`  ${c}`));
     }
 
     console.log(`\n${users.length} users seeded successfully!`);

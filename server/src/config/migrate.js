@@ -105,6 +105,31 @@ const createTables = async () => {
       )
     `);
 
+    // Lockout columns on registrations — needed during registration, before a
+    // users row exists (Task 6). Added as standalone ALTERs so both fresh and
+    // pre-existing databases converge.
+    await client.query(`
+      ALTER TABLE registrations ADD COLUMN IF NOT EXISTS otp_fail_count INT DEFAULT 0;
+    `);
+    await client.query(`
+      ALTER TABLE registrations ADD COLUMN IF NOT EXISTS lockout_tier INT DEFAULT 0;
+    `);
+    await client.query(`
+      ALTER TABLE registrations ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+    `);
+    // Backfill defaults on any pre-existing rows.
+    await client.query(`
+      UPDATE registrations SET otp_fail_count = 0 WHERE otp_fail_count IS NULL;
+    `);
+    await client.query(`
+      UPDATE registrations SET lockout_tier = 0 WHERE lockout_tier IS NULL;
+    `);
+
+    // One in-flight registration per email (register uses ON CONFLICT (email)).
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_registrations_email ON registrations(email);
+    `);
+
     await client.query('COMMIT');
     console.log('Database tables created successfully!');
   } catch (error) {

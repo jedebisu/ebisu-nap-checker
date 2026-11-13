@@ -1294,7 +1294,7 @@ const styles = StyleSheet.create({
   },
   collapsedBar: {
     position: 'absolute',
-    bottom: 28,
+    bottom: 40,
     left: 0,
     right: 0,
     height: 72,

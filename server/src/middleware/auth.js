@@ -63,8 +63,9 @@ const authenticateToken = async (req, res, next) => {
 };
 
 // Middleware to require admin role on the authenticated user.
+// Uses the `role` column (demo schema has no `is_admin`).
 const requireAdmin = (req, res, next) => {
-  if (!req.user || !req.user.is_admin) {
+  if (!req.user || req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();

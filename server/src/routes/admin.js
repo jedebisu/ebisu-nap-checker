@@ -60,6 +60,95 @@ router.get('/invites', async (_req, res) => {
   }
 });
 
+// Whether this database carries the production-shaped employee_id column on
+// users. Fresh demo databases don't; with no such column no legacy (pre-demo)
+// rows can exist, so every row is demo-managed.
+const hasEmployeeIdColumn = async () => {
+  const result = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'employee_id'`
+  );
+  return result.rows.length > 0;
+};
+
+// GET /api/admin/users — list only demo-created accounts (employee_id LIKE
+// 'gmaps-%') for the admin console's Users tab. Legacy selfie-attendance
+// accounts are never listed; their count is returned as legacy_count so the
+// console can show "N system accounts hidden". `records` counts the user's
+// non-expired session rows.
+router.get('/users', async (_req, res) => {
+  try {
+    const scoped = await hasEmployeeIdColumn();
+    const demoWhere = scoped ? `u.employee_id LIKE 'gmaps-%'` : 'TRUE';
+    const result = await pool.query(
+      `SELECT u.id, u.firstname, u.lastname, u.email, u.phone, u.role, u.is_active,
+              u.must_change_password, u.created_at,
+              COUNT(s.id)::int AS records
+       FROM users u
+       LEFT JOIN sessions s ON s.user_id = u.id AND s.expires_at > NOW()
+       WHERE ${demoWhere}
+       GROUP BY u.id
+       ORDER BY u.created_at DESC`
+    );
+    let legacyCount = 0;
+    if (scoped) {
+      const legacy = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM users
+         WHERE employee_id IS NULL OR employee_id NOT LIKE 'gmaps-%'`
+      );
+      legacyCount = legacy.rows[0].n;
+    }
+    res.json({ users: result.rows, legacy_count: legacyCount });
+  } catch (error) {
+    console.error('List users error:', error);
+    res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+// DELETE /api/admin/users/:id — hard-delete a demo account. Scoped to the
+// same employee_id LIKE 'gmaps-%' filter as the list endpoint: legacy or
+// unknown ids return 404 and are never touched. Approved leave requests
+// referencing the account as approver block deletion with 409 and a named
+// blocker count; otherwise the row is deleted and DB-level ON DELETE CASCADE
+// rules (e.g. sessions) take care of the rest.
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(404).json({ error: 'Account not found or not managed' });
+    }
+    const scoped = await hasEmployeeIdColumn();
+    const demoAnd = scoped ? `AND employee_id LIKE 'gmaps-%'` : '';
+    const owner = await pool.query(
+      `SELECT id FROM users WHERE id = $1 ${demoAnd}`,
+      [id]
+    );
+    if (owner.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found or not managed' });
+    }
+    // Pre-check approved-by blockers. to_regclass() returns NULL instead of
+    // raising when leave_requests doesn't exist on this database.
+    const tableCheck = await pool.query(`SELECT to_regclass('public.leave_requests') AS reg`);
+    if (tableCheck.rows[0].reg) {
+      const blockers = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM leave_requests WHERE approved_by = $1',
+        [id]
+      );
+      if (blockers.rows[0].n > 0) {
+        return res.status(409).json({
+          error: 'Account approved leave requests; deletion blocked.',
+          blocking: { leave_requests_approved: blockers.rows[0].n },
+        });
+      }
+    }
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 // GET /api/admin/lockouts — registrations currently locked out or with OTP
 // failures. OTP lockout state lives on the registrations table (the users row
 // is only created after a successful OTP), so this panel targets registrations.

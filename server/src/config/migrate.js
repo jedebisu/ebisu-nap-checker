@@ -8,7 +8,9 @@ const createTables = async () => {
     await client.query('BEGIN');
 
     // Users table (demo-adapted: no employee_id; name computed from
-    // firstname || lastname in auth middleware).
+    // firstname || lastname in auth middleware). Pre-existing
+    // production-shaped databases (id, employee_id, name, email, pin, ...)
+    // are supported additively via the convergence ALTERs below.
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -26,6 +28,21 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    // Convergence ALTERs for pre-existing production-shaped users tables
+    // (id, employee_id, name, email, pin, is_active, is_admin, created_at,
+    // updated_at, leave_balance, role). Additive only: every column is
+    // nullable or defaulted so existing rows remain valid; nothing is
+    // dropped, renamed, or constrained. Standalone ALTERs mirror the
+    // registrations lockout pattern below.
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS firstname VARCHAR(100);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lastname VARCHAR(100);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_fail_count INT DEFAULT 0;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_tier INT DEFAULT 0;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;`);
 
     // Sessions table for JWT tracking.
     await client.query(`

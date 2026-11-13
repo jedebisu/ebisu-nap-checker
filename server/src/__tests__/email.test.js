@@ -137,4 +137,11 @@ describe('non-test environment with mocked resend module', () => {
     await expect(emailService.sendOtpEmail('user@example.com', '123456'))
       .rejects.toThrow(/Failed to send email/);
   });
+
+  it('errors on Resend API failure for temp-password', async () => {
+    process.env.RESEND_API_KEY = 're_test_key';
+    mockSend.mockImplementationOnce(() => Promise.resolve({ data: null, error: { message: 'invalid key' } }));
+    await expect(emailService.sendTempPasswordEmail('a@b.com', 'x'))
+      .rejects.toThrow(/invalid key/);
+  });
 });

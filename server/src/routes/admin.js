@@ -60,14 +60,16 @@ router.get('/invites', async (_req, res) => {
   }
 });
 
-// GET /api/admin/lockouts — users currently locked out or with OTP failures.
+// GET /api/admin/lockouts — registrations currently locked out or with OTP
+// failures. OTP lockout state lives on the registrations table (the users row
+// is only created after a successful OTP), so this panel targets registrations.
 // Ordered by locked_until ASC so the most urgent rows come first; NULL
 // locked_until (fail count > 0 but not time-locked) sorts last.
 router.get('/lockouts', async (_req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, email, firstname, lastname, locked_until, otp_fail_count, lockout_tier
-       FROM users
+      `SELECT email, firstname, lastname, locked_until, otp_fail_count, lockout_tier
+       FROM registrations
        WHERE locked_until > NOW() OR otp_fail_count > 0
        ORDER BY locked_until ASC NULLS LAST`
     );
@@ -78,8 +80,10 @@ router.get('/lockouts', async (_req, res) => {
   }
 });
 
-// POST /api/admin/unlock — clear lockout state for a user by email and drop
-// their sessions so they must log in again.
+// POST /api/admin/unlock — clear OTP lockout state on the registration row for
+// an email and drop that email's sessions (if a matching users row exists —
+// registrants who never completed registration have none) so they must log in
+// again.
 router.post('/unlock', async (req, res) => {
   try {
     const { email } = req.body || {};
@@ -89,18 +93,24 @@ router.post('/unlock', async (req, res) => {
     const normalized = email.trim().toLowerCase();
 
     const updated = await pool.query(
-      `UPDATE users
+      `UPDATE registrations
        SET otp_fail_count = 0, lockout_tier = 0, locked_until = NULL
        WHERE LOWER(email) = $1
-       RETURNING id`,
+       RETURNING email`,
       [normalized]
     );
 
     if (updated.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'Registration not found' });
     }
 
-    await pool.query('DELETE FROM sessions WHERE user_id = $1', [updated.rows[0].id]);
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE LOWER(email) = $1',
+      [normalized]
+    );
+    if (userResult.rows.length > 0) {
+      await pool.query('DELETE FROM sessions WHERE user_id = $1', [userResult.rows[0].id]);
+    }
 
     res.json({ ok: true });
   } catch (error) {

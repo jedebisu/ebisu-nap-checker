@@ -13,10 +13,10 @@
 # in the Render dashboard only.
 services:
   - type: web
-    name: gmaps-api
+    name: ebisu-nap-checker
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

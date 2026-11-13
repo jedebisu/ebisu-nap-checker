@@ -8,25 +8,37 @@ const bcrypt = require('bcryptjs');
 const ADMIN = 'test-admin-token-123';
 const WRONG = 'definitely-not-the-admin-token';
 const LOCKED_EMAIL = 'admin-test-locked@example.com';
+const NOUSER_LOCKED_EMAIL = 'admin-test-locked-nouser@example.com';
 const UNLOCK_MISSING_EMAIL = 'admin-test-nobody@example.com';
 
 // Codes generated during this file's tests, tracked for cleanup.
 const createdCodes = [];
 
-// Seed a locked user (locked_until in the FUTURE so the lockouts panel shows
-// it; the brief asks to verify unlock zeroes the counters regardless).
-const seedLockedUser = async () => {
+// Seed a locked REGISTRATION row (locked_until in the FUTURE so the lockouts
+// panel shows it; the brief asks to verify unlock zeroes the counters
+// regardless). OTP lockout state lives on registrations, not users — users
+// rows are only created after a successful OTP. A matching users row +
+// session is also created so the unlock test can verify sessions are dropped
+// when a user exists.
+const seedLockedRegistration = async () => {
   const client = await pool.connect();
   try {
     // Idempotent: clear any leftovers from a previous interrupted run.
+    await client.query('DELETE FROM registrations WHERE email = $1', [LOCKED_EMAIL]);
     await client.query('DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = $1)', [LOCKED_EMAIL]);
     await client.query('DELETE FROM users WHERE email = $1', [LOCKED_EMAIL]);
 
+    await client.query(
+      `INSERT INTO registrations
+         (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
+       VALUES ('Admin', 'TestLocked', $1, '09170000000', NULL, 'seed-hash', NOW() + INTERVAL '1 hour', 3, 2, NOW() + INTERVAL '1 hour')`,
+      [LOCKED_EMAIL]
+    );
+
     const hash = await bcrypt.hash('AdminTest1!', 10);
     const res = await client.query(
-      `INSERT INTO users (firstname, lastname, email, password_hash, must_change_password, is_active, role,
-                          otp_fail_count, lockout_tier, locked_until)
-       VALUES ('Admin', 'TestLocked', $1, $2, false, true, 'user', 3, 2, NOW() + INTERVAL '1 hour')
+      `INSERT INTO users (firstname, lastname, email, password_hash, must_change_password, is_active, role)
+       VALUES ('Admin', 'TestLocked', $1, $2, false, true, 'user')
        RETURNING id`,
       [LOCKED_EMAIL, hash]
     );
@@ -42,7 +54,7 @@ const seedLockedUser = async () => {
 };
 
 beforeAll(async () => {
-  await seedLockedUser();
+  await seedLockedRegistration();
 });
 
 afterAll(async () => {
@@ -51,6 +63,7 @@ afterAll(async () => {
     if (createdCodes.length > 0) {
       await client.query('DELETE FROM invite_codes WHERE code = ANY($1)', [createdCodes]);
     }
+    await client.query('DELETE FROM registrations WHERE email = ANY($1)', [[LOCKED_EMAIL, NOUSER_LOCKED_EMAIL]]);
     await client.query('DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = $1)', [LOCKED_EMAIL]);
     await client.query('DELETE FROM users WHERE email = $1', [LOCKED_EMAIL]);
   } finally {
@@ -125,7 +138,7 @@ describe('GET /api/admin/invites', () => {
 });
 
 describe('GET /api/admin/lockouts', () => {
-  it('lists users with active lockout or failing OTP', async () => {
+  it('lists the locked registration (not users) with active lockout or failing OTP', async () => {
     const res = await request(app)
       .get('/api/admin/lockouts')
       .set('Authorization', `Bearer ${ADMIN}`);
@@ -133,6 +146,8 @@ describe('GET /api/admin/lockouts', () => {
     expect(Array.isArray(res.body)).toBe(true);
     const row = res.body.find((r) => r.email === LOCKED_EMAIL);
     expect(row).toBeDefined();
+    expect(row.firstname).toBe('Admin');
+    expect(row.lastname).toBe('TestLocked');
     expect(row.otp_fail_count).toBe(3);
     expect(row.lockout_tier).toBe(2);
     expect(row.locked_until).toBeTruthy();
@@ -140,7 +155,7 @@ describe('GET /api/admin/lockouts', () => {
 });
 
 describe('POST /api/admin/unlock', () => {
-  it('zeroes lockout fields and clears sessions for the user', async () => {
+  it('zeroes lockout fields on the registration and clears sessions for the matching user', async () => {
     const res = await request(app)
       .post('/api/admin/unlock')
       .set('Authorization', `Bearer ${ADMIN}`)
@@ -149,7 +164,7 @@ describe('POST /api/admin/unlock', () => {
     expect(res.body).toEqual({ ok: true });
 
     const db = await pool.query(
-      'SELECT otp_fail_count, lockout_tier, locked_until FROM users WHERE email = $1',
+      'SELECT otp_fail_count, lockout_tier, locked_until FROM registrations WHERE email = $1',
       [LOCKED_EMAIL]
     );
     expect(db.rows[0].otp_fail_count).toBe(0);
@@ -161,6 +176,31 @@ describe('POST /api/admin/unlock', () => {
       [LOCKED_EMAIL]
     );
     expect(sessions.rows[0].n).toBe(0);
+  });
+
+  it('unlocks a registration with no matching users row (sessions skipped silently)', async () => {
+    await pool.query('DELETE FROM registrations WHERE email = $1', [NOUSER_LOCKED_EMAIL]);
+    await pool.query(
+      `INSERT INTO registrations
+         (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
+       VALUES ('No', 'User', $1, '09170000001', NULL, 'seed-hash', NOW() + INTERVAL '1 hour', 6, 0, NOW() + INTERVAL '30 minutes')`,
+      [NOUSER_LOCKED_EMAIL]
+    );
+    const res = await request(app)
+      .post('/api/admin/unlock')
+      .set('Authorization', `Bearer ${ADMIN}`)
+      .send({ email: NOUSER_LOCKED_EMAIL });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+
+    const db = await pool.query(
+      'SELECT otp_fail_count, lockout_tier, locked_until FROM registrations WHERE email = $1',
+      [NOUSER_LOCKED_EMAIL]
+    );
+    expect(db.rows[0].otp_fail_count).toBe(0);
+    expect(db.rows[0].lockout_tier).toBe(0);
+    expect(db.rows[0].locked_until).toBeNull();
+    await pool.query('DELETE FROM registrations WHERE email = $1', [NOUSER_LOCKED_EMAIL]);
   });
 
   it('returns 404 for an unknown email', async () => {

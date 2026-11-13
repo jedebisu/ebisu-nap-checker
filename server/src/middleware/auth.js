@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { pool } = require('../config/database');
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -80,7 +81,14 @@ const requireAdminToken = (req, res, next) => {
   if (!expected) {
     return res.status(500).json({ error: 'ADMIN_TOKEN not configured' });
   }
-  if (!token || token !== expected) {
+  if (!token) {
+    return res.status(401).json({ error: 'Admin token required' });
+  }
+  // Constant-time comparison on SHA-256 digests — hashing first means the
+  // digests are always the same length, so differing plaintext lengths are safe.
+  const presented = crypto.createHash('sha256').update(String(token)).digest();
+  const expectedDigest = crypto.createHash('sha256').update(String(expected)).digest();
+  if (!crypto.timingSafeEqual(presented, expectedDigest)) {
     return res.status(401).json({ error: 'Admin token required' });
   }
   next();

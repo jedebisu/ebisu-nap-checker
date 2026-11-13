@@ -183,6 +183,39 @@ describe('Auth Endpoints', () => {
     });
   });
 
+  describe('POST /api/auth/logout', () => {
+    it('deletes the session row for the issued token', async () => {
+      const userResult = await insertTestUser('logout@test.com', false);
+      const lookup = await pool.query(`SELECT email FROM users WHERE id = $1`, [userResult.rows[0].id]);
+      const email = lookup.rows[0].email;
+
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password: 'TestPass1!' });
+      expect(login.status).toBe(200);
+      const token = login.body.token;
+
+      const before = await pool.query('SELECT COUNT(*)::int AS n FROM sessions WHERE token = $1', [token]);
+      expect(before.rows[0].n).toBe(1);
+
+      const res = await request(app)
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true });
+
+      const after = await pool.query('SELECT COUNT(*)::int AS n FROM sessions WHERE token = $1', [token]);
+      expect(after.rows[0].n).toBe(0);
+    });
+
+    it('returns 401 for a garbage token', async () => {
+      const res = await request(app)
+        .post('/api/auth/logout')
+        .set('Authorization', 'Bearer not-a-real-token');
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('POST /api/auth/setup-password', () => {
     let token;
     let userId;

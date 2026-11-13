@@ -105,6 +105,24 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
+// POST /api/auth/logout
+// Requires authenticateToken. Deletes the session row for the raw Bearer
+// token (the same token value the middleware validated). Idempotent: a
+// missing session row is still a 200.
+router.post('/logout', authenticateToken, async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
 // POST /api/auth/setup-password
 // Requires authenticateToken. Body: { password }
 // Validates password strength, updates password_hash and must_change_password.
@@ -197,7 +215,10 @@ router.post('/register', async (req, res) => {
     const otpHash = await hashOtp(otp);
     const otpExpiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
-    // Create or replace the registration for this email.
+    // Create or replace the registration for this email. Lockout state
+    // (otp_fail_count / lockout_tier / locked_until) is deliberately NOT
+    // reset here — re-registering must not bypass the lockout system,
+    // exactly like resend. New rows get the INSERT defaults (0, 0, NULL).
     await pool.query(
       `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)
@@ -207,10 +228,7 @@ router.post('/register', async (req, res) => {
          phone = EXCLUDED.phone,
          invite_code_id = EXCLUDED.invite_code_id,
          otp_hash = EXCLUDED.otp_hash,
-         otp_expires_at = EXCLUDED.otp_expires_at,
-         otp_fail_count = 0,
-         lockout_tier = 0,
-         locked_until = NULL`,
+         otp_expires_at = EXCLUDED.otp_expires_at`,
       [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
     );
 
@@ -290,10 +308,13 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json(body);
     }
 
-    // 4. Valid OTP: atomically create the user, claim one invite use and
-    // delete the registration. If the key was exhausted by a concurrent
-    // completion, the guarded UPDATE returns 0 rows and the whole
-    // transaction aborts.
+    // 4. Valid OTP. Send the temp-password email FIRST, inside the
+    // transaction, before any writes. If the send throws we ROLLBACK and
+    // return 500: no users row is created, the invite is not consumed and
+    // the registration row is retained so the user can re-verify once email
+    // is healthy again. Holding the transaction open across the HTTP send is
+    // acceptable at demo scale. Only after a successful send do the guarded
+    // invite UPDATE + users INSERT + registrations DELETE run, then COMMIT.
     const tempPassword = crypto.randomBytes(8).toString('base64url') + '!A1';
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
@@ -301,6 +322,15 @@ router.post('/verify-otp', async (req, res) => {
     try {
       await client.query('BEGIN');
 
+      try {
+        await sendTempPasswordEmail(email, tempPassword);
+      } catch (emailError) {
+        await client.query('ROLLBACK');
+        console.error('Temp-password email error:', emailError);
+        return res.status(500).json({ error: 'Failed to send temporary password email. Please try registering again.' });
+      }
+
+      // Email is on its way — now persist everything in the same transaction.
       await client.query(
         `INSERT INTO users (firstname, lastname, email, phone, password_hash, must_change_password)
          VALUES ($1, $2, $3, $4, $5, true)`,
@@ -327,9 +357,6 @@ router.post('/verify-otp', async (req, res) => {
     } finally {
       client.release();
     }
-
-    // Email the temp password via Resend (falls back to in-memory log under test).
-    await sendTempPasswordEmail(email, tempPassword);
 
     res.json({ ok: true, message: `Temporary password sent to ${email}` });
   } catch (error) {

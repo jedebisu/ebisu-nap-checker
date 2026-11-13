@@ -392,4 +392,42 @@ describe('Registration, invitation keys, OTP + lockout', () => {
       expect(fresh.status).toBe(200);
     });
   });
+
+  describe('Group 6: re-register preserves OTP lockout state', () => {
+    it('register again keeps lockout columns unchanged; correct OTP after the window expires completes', async () => {
+      const code1 = await insertInvite({ maxUses: 10 });
+      const email = mkEmail('reregister-lockout');
+      const reg = await registerUser(email, code1);
+      expect(reg.status).toBe(200);
+
+      // Rack up 6 wrong OTPs → tier 0, 5-minute lockout.
+      for (let i = 0; i < 6; i++) {
+        const r = await verifyOtp(email, wrongOtpFor(email));
+        expect(r.status).toBe(400);
+      }
+      let row = await getRegistration(email);
+      expect(row.otp_fail_count).toBe(6);
+      expect(row.lockout_tier).toBe(0);
+      expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now());
+
+      // Re-register the same email — lockout state must survive.
+      const code2 = await insertInvite({ maxUses: 10 });
+      const reg2 = await registerUser(email, code2);
+      expect(reg2.status).toBe(200);
+      row = await getRegistration(email);
+      expect(row.otp_fail_count).toBe(6);
+      expect(row.lockout_tier).toBe(0);
+      expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now());
+
+      // The correct (newest) OTP still works once the lockout window passes.
+      await expireLockout(email);
+      const otp = lastOtpFor(email);
+      const res = await verifyOtp(email, otp);
+      expect(res.status).toBe(200);
+
+      const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      expect(userResult.rows).toHaveLength(1);
+      expect(await getRegistration(email)).toBeNull();
+    });
+  });
 });

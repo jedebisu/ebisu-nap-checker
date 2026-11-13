@@ -32,13 +32,11 @@ const ALLOWED_ORIGINS = [];
   const trimmed = origin.trim();
   if (trimmed) ALLOWED_ORIGINS.push(trimmed);
 });
-const VERCEL_ORIGIN_RE = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
-
 app.use(cors({
   credentials: true,
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    const allowed = ALLOWED_ORIGINS.includes(origin) || VERCEL_ORIGIN_RE.test(origin);
+    const allowed = ALLOWED_ORIGINS.includes(origin);
     callback(null, allowed);
   }
 }));

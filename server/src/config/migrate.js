@@ -44,6 +44,71 @@ const createTables = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_tier INT DEFAULT 0;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;`);
 
+    // Additive convergence for pre-existing production-shaped users tables
+    // (employee_id NOT NULL UNIQUE, name NOT NULL). Demo seed/auth INSERTs
+    // only write the demo columns, so this BEFORE INSERT trigger fills
+    // employee_id (from the unique email — 'gmaps-' + email, with a random
+    // UUID fallback when email is NULL or the column is too narrow) and name
+    // (firstname || lastname) only when they are NULL. Legacy writers always
+    // supply employee_id and name explicitly, so the trigger never alters
+    // their rows. Fresh demo databases have no employee_id column and get no
+    // trigger at all.
+    await client.query(`
+      DO $$
+      DECLARE
+        has_employee_id boolean;
+        has_name boolean;
+        emp_id_len integer;
+        emp_id_expr text;
+        name_expr text := '';
+      BEGIN
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'employee_id'
+        ) INTO has_employee_id;
+
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'name'
+        ) INTO has_name;
+
+        -- Fresh demo schema: no employee_id column, nothing to converge.
+        IF NOT has_employee_id THEN
+          RETURN;
+        END IF;
+
+        SELECT character_maximum_length INTO emp_id_len
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'employee_id';
+
+        -- employee_id values derive from the unique email, so the
+        -- users_employee_id_key UNIQUE index can't be violated; if email is
+        -- NULL fall back to a random UUID. Unbounded/wide columns take
+        -- 'gmaps-' || email (left()-guarded); columns too narrow for that
+        -- keep uniqueness via a random UUID trimmed to fit.
+        IF emp_id_len IS NULL THEN
+          emp_id_expr := quote_literal('gmaps-') || ' || COALESCE(NEW.email, gen_random_uuid()::text)';
+        ELSIF emp_id_len >= 46 THEN
+          emp_id_expr := 'left(' || quote_literal('gmaps-') || ' || COALESCE(NEW.email, gen_random_uuid()::text), ' || emp_id_len || ')';
+        ELSE
+          emp_id_expr := 'left(gen_random_uuid()::text, ' || emp_id_len || ')';
+        END IF;
+
+        IF has_name THEN
+          name_expr := 'IF NEW.name IS NULL THEN NEW.name := COALESCE(NEW.firstname, ' || quote_literal('') || ') || ' || quote_literal(' ') || ' || COALESCE(NEW.lastname, ' || quote_literal('') || '); END IF;';
+        END IF;
+
+        EXECUTE 'CREATE OR REPLACE FUNCTION users_demo_defaults() RETURNS trigger AS $fn$
+          BEGIN
+            IF NEW.employee_id IS NULL THEN NEW.employee_id := ' || emp_id_expr || '; END IF;
+            ' || name_expr || '
+            RETURN NEW;
+          END $fn$ LANGUAGE plpgsql';
+        EXECUTE 'DROP TRIGGER IF EXISTS trg_users_demo_defaults ON users';
+        EXECUTE 'CREATE TRIGGER trg_users_demo_defaults BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION users_demo_defaults()';
+      END $$;
+    `);
+
     // Sessions table for JWT tracking.
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (

@@ -359,14 +359,16 @@ router.post('/resend-otp', async (req, res) => {
       return res.status(400).json({ error: 'No active registration found' });
     }
 
-    // Generate a fresh OTP; replaces the old hash and resets the TTL.
+    // Generate a fresh OTP; replaces the old hash and extends the TTL.
+    // Lockout state (otp_fail_count / lockout_tier / locked_until) is deliberately
+    // left untouched so resend cannot be used to bypass the lockout system.
     const otp = generateOtp();
     const otpHash = await hashOtp(otp);
     const otpExpiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     await pool.query(
       `UPDATE registrations
-       SET otp_hash = $1, otp_expires_at = $2, otp_fail_count = 0, lockout_tier = 0, locked_until = NULL
+       SET otp_hash = $1, otp_expires_at = $2
        WHERE email = $3`,
       [otpHash, otpExpiresAt, email]
     );

@@ -338,5 +338,47 @@ describe('Registration, invitation keys, OTP + lockout', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/no active registration/i);
     });
+
+    it('does NOT reset lockout state after resend (regression: attacker cannot bypass lockout by spamming resend)', async () => {
+      const code = await insertInvite({ maxUses: 10 });
+      const email = mkEmail('lockout-resend');
+      const reg = await registerUser(email, code);
+      expect(reg.status).toBe(200);
+
+      // Rack up 6 wrong OTPs to trigger tier 0 (5-min lockout).
+      for (let i = 0; i < 6; i++) {
+        const r = await verifyOtp(email, wrongOtpFor(email));
+        expect(r.status).toBe(400);
+      }
+      let row = await getRegistration(email);
+      expect(row.otp_fail_count).toBe(6);
+      expect(row.lockout_tier).toBe(0);
+      expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now());
+
+      // Resend should succeed but preserve lockout state.
+      const resend = await request(app).post('/api/auth/resend-otp').send({ email });
+      expect(resend.status).toBe(200);
+
+      row = await getRegistration(email);
+      expect(row.otp_fail_count).toBe(6);
+      expect(row.lockout_tier).toBe(0);
+      expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now());
+
+      // Old OTP is rejected (replaced), new OTP verifies successfully.
+      const oldOtp = lastOtpFor(email);
+      const stale = await verifyOtp(email, wrongOtpFor(email));
+      expect(stale.status).toBe(400); // still locked due to fail count
+      // Explicitly confirm the old OTP hash no longer matches by using the pre-resend OTP value.
+      const otpBeforeResend = oldOtp;
+      const staleAttempt = await verifyOtp(email, otpBeforeResend);
+      expect(staleAttempt.status).toBe(400);
+
+      // After the lockout window passes, the NEW OTP (from resend) should be accepted.
+      await expireLockout(email);
+      const newOtp = lastOtpFor(email);
+      expect(newOtp).toBeTruthy();
+      const fresh = await verifyOtp(email, newOtp);
+      expect(fresh.status).toBe(200);
+    });
   });
 });

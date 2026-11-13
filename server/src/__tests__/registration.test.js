@@ -344,6 +344,10 @@ describe('Registration, invitation keys, OTP + lockout', () => {
       const email = mkEmail('lockout-resend');
       const reg = await registerUser(email, code);
       expect(reg.status).toBe(200);
+      // Capture the OTP BEFORE any resend so the stale-OTP assertion below
+      // tests hash replacement, not just the lockout refusal.
+      const preResendOtp = lastOtpFor(email);
+      expect(preResendOtp).toMatch(/^\d{6}$/);
 
       // Rack up 6 wrong OTPs to trigger tier 0 (5-min lockout).
       for (let i = 0; i < 6; i++) {
@@ -359,21 +363,28 @@ describe('Registration, invitation keys, OTP + lockout', () => {
       const resend = await request(app).post('/api/auth/resend-otp').send({ email });
       expect(resend.status).toBe(200);
 
+      // With 1e-6 collision odds the resend could re-issue the identical OTP;
+      // re-request until the hash is guaranteed to have changed.
+      if (lastOtpFor(email) === preResendOtp) {
+        const again = await request(app).post('/api/auth/resend-otp').send({ email });
+        expect(again.status).toBe(200);
+      }
+      expect(lastOtpFor(email)).not.toBe(preResendOtp);
+
       row = await getRegistration(email);
       expect(row.otp_fail_count).toBe(6);
       expect(row.lockout_tier).toBe(0);
       expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now());
 
-      // Old OTP is rejected (replaced), new OTP verifies successfully.
-      const oldOtp = lastOtpFor(email);
-      const stale = await verifyOtp(email, wrongOtpFor(email));
-      expect(stale.status).toBe(400); // still locked due to fail count
-      // Explicitly confirm the old OTP hash no longer matches by using the pre-resend OTP value.
-      const otpBeforeResend = oldOtp;
-      const staleAttempt = await verifyOtp(email, otpBeforeResend);
-      expect(staleAttempt.status).toBe(400);
+      // After the lockout window passes, the pre-resend (stale) OTP must still
+      // be rejected: resend replaced the stored hash. Note: this wrong-OTP
+      // attempt increments the fail counter and re-locks (tier 1), so the
+      // window is expired again before the fresh-call assertion below.
+      await expireLockout(email);
+      const stale = await verifyOtp(email, preResendOtp);
+      expect(stale.status).toBe(400);
 
-      // After the lockout window passes, the NEW OTP (from resend) should be accepted.
+      // The NEW OTP (issued by resend) is accepted once the lockout window passes.
       await expireLockout(email);
       const newOtp = lastOtpFor(email);
       expect(newOtp).toBeTruthy();

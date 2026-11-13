@@ -45,12 +45,14 @@ const createTables = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;`);
 
     // Additive convergence for pre-existing production-shaped users tables
-    // (employee_id NOT NULL UNIQUE, name NOT NULL). Demo seed/auth INSERTs
-    // only write the demo columns, so this BEFORE INSERT trigger fills
-    // employee_id (from the unique email — 'gmaps-' + email, with a random
-    // UUID fallback when email is NULL or the column is too narrow) and name
-    // (firstname || lastname) only when they are NULL. Legacy writers always
-    // supply employee_id and name explicitly, so the trigger never alters
+    // (employee_id NOT NULL UNIQUE, name NOT NULL, pin NOT NULL). Demo
+    // seed/auth INSERTs only write the demo columns, so this BEFORE INSERT
+    // trigger fills employee_id (from the unique email — 'gmaps-' + email,
+    // with a random UUID fallback when email is NULL or the column is too
+    // narrow), name (firstname || lastname), and pin (random UUID text —
+    // demo users authenticate by email+password, so the legacy pin column
+    // is unused) only when they are NULL. Legacy writers always supply
+    // employee_id, name, and pin explicitly, so the trigger never alters
     // their rows. Fresh demo databases have no employee_id column and get no
     // trigger at all.
     await client.query(`
@@ -58,9 +60,11 @@ const createTables = async () => {
       DECLARE
         has_employee_id boolean;
         has_name boolean;
+        has_pin boolean;
         emp_id_len integer;
         emp_id_expr text;
         name_expr text := '';
+        pin_expr text := '';
       BEGIN
         SELECT EXISTS (
           SELECT 1 FROM information_schema.columns
@@ -71,6 +75,11 @@ const createTables = async () => {
           SELECT 1 FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'name'
         ) INTO has_name;
+
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'pin'
+        ) INTO has_pin;
 
         -- Fresh demo schema: no employee_id column, nothing to converge.
         IF NOT has_employee_id THEN
@@ -98,10 +107,15 @@ const createTables = async () => {
           name_expr := 'IF NEW.name IS NULL THEN NEW.name := COALESCE(NEW.firstname, ' || quote_literal('') || ') || ' || quote_literal(' ') || ' || COALESCE(NEW.lastname, ' || quote_literal('') || '); END IF;';
         END IF;
 
+        IF has_pin THEN
+          pin_expr := 'IF NEW.pin IS NULL THEN NEW.pin := gen_random_uuid()::text; END IF;';
+        END IF;
+
         EXECUTE 'CREATE OR REPLACE FUNCTION users_demo_defaults() RETURNS trigger AS $fn$
           BEGIN
             IF NEW.employee_id IS NULL THEN NEW.employee_id := ' || emp_id_expr || '; END IF;
             ' || name_expr || '
+            ' || pin_expr || '
             RETURN NEW;
           END $fn$ LANGUAGE plpgsql';
         EXECUTE 'DROP TRIGGER IF EXISTS trg_users_demo_defaults ON users';

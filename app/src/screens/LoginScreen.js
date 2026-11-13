@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image, ScrollView } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function LoginScreen({ onCreateAccount }) {
   const [email, setEmail] = useState('');
@@ -21,7 +22,12 @@ export default function LoginScreen({ onCreateAccount }) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={styles.bgAccent} />
+      <LinearGradient
+        colors={['#00539B', '#FF3C86', '#FF8C00']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bgAccent}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <View style={styles.logoContainer}>
@@ -106,7 +112,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', marginBottom: 20,
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10,
   },
-  logo: { width: 72, height: 72 },
+  logo: { width: 72, height: 72, borderRadius: 16, overflow: 'hidden' },
   title: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: 3 },
   subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 6, letterSpacing: 1 },
   form: {

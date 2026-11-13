@@ -27,8 +27,8 @@ export default function LoginScreen() {
           <View style={styles.logoWrap}>
             <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
           </View>
-          <Text style={styles.title}>EBISU</Text>
-          <Text style={styles.subtitle}>Time & Attendance</Text>
+          <Text style={styles.title}>G-MAPS</Text>
+          <Text style={styles.subtitle}>NAP Facility Map</Text>
         </View>
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -70,7 +70,7 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.footer}>Secure employee attendance tracking</Text>
+        <Text style={styles.footer}>Secure NAP facility monitoring</Text>
       </View>
     </KeyboardAvoidingView>
   );

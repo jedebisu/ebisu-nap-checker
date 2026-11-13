@@ -18,7 +18,7 @@ const COLORS = {
   green: '#22c55e',
   yellow: '#f59e0b',
   red: '#ef4444',
-  primary: '#c8956c',
+  primary: '#00539B',
   dark: '#1a1d23',
   gray: '#6b7280',
   lightGray: '#e5e7eb',
@@ -63,7 +63,7 @@ const getMarkerColor = (vacantLines) => {
   return COLORS.green;
 };
 
-const NapMapScreen = ({ navigation }) => {
+const NapMapScreen = () => {
   const { user } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);

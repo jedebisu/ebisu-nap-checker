@@ -1,8 +1,6 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { attendanceAPI } from '../services/api';
-import { syncOnStartup, startSyncOnConnect } from '../services/syncService';
-import { stopLocationTracking, flushPings } from '../services/locationTracker';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -14,14 +12,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     loadStoredAuth();
   }, []);
-
-  useEffect(() => {
-    if (user && token) {
-      syncOnStartup();
-      const unsubscribe = startSyncOnConnect();
-      return unsubscribe;
-    }
-  }, [user, token]);
 
   const loadStoredAuth = async () => {
     try {
@@ -41,7 +31,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (employeeId, pin) => {
     try {
-      const response = await attendanceAPI.login({ employee_id: employeeId, pin });
+      const response = await authAPI.login({ employee_id: employeeId, pin });
       const { token: newToken, user: userData } = response;
 
       await AsyncStorage.setItem('auth_token', newToken);
@@ -61,10 +51,8 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await flushPings().catch(() => {});
-      await stopLocationTracking();
       if (token) {
-        await attendanceAPI.logout();
+        await authAPI.logout();
       }
     } catch (error) {
       // Logout silently fails if offline

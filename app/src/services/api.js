@@ -1,8 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { checkConnection } from './network';
 
-const API_BASE_URL = 'https://selfie-api-sqgh.onrender.com/api';
+// TODO(demo-deploy): swap to Render URL
+const API_BASE_URL = 'http://10.0.2.2:3001/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -25,7 +25,7 @@ api.interceptors.request.use(
   }
 );
 
-export const attendanceAPI = {
+export const authAPI = {
   login: async (credentials) => {
     const response = await api.post('/auth/login', credentials);
     return response.data;
@@ -33,52 +33,6 @@ export const attendanceAPI = {
 
   logout: async () => {
     const response = await api.post('/auth/logout');
-    return response.data;
-  },
-
-  submit: async (formData) => {
-    const response = await api.post('/attendance', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
-  },
-
-  getAll: async (params = {}) => {
-    const response = await api.get('/attendance', { params });
-    return response.data;
-  },
-
-  getTodaySummary: async () => {
-    const response = await api.get('/attendance/summary/me');
-    return response.data;
-  },
-
-  getMyCalendar: async (year, month) => {
-    const response = await api.get('/attendance/calendar/me', { params: { year, month } });
-    return response.data;
-  },
-};
-
-export const locationAPI = {
-  sendPings: async (pings) => {
-    const response = await api.post('/location/pings', { pings });
-    return response.data;
-  },
-};
-
-export const leaveAPI = {
-  getAll: async (params = {}) => {
-    const response = await api.get('/leave', { params });
-    return response.data;
-  },
-
-  create: async (data) => {
-    const response = await api.post('/leave', data);
-    return response.data;
-  },
-
-  update: async (id, status) => {
-    const response = await api.put(`/leave/${id}`, { status });
     return response.data;
   },
 };

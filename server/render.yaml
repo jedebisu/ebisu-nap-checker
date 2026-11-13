@@ -1,0 +1,39 @@
+# Render Blueprint for the G-MAPS demo backend.
+# Adapted from selfie-attendance/server/render.yaml. Unlike that project the
+# database is Supabase (external), so there is no `databases:` block here and
+# the owner runs db:migrate / db:seed / naps:import once against Supabase
+# instead of on every build (re-seeding on each deploy would duplicate data).
+#
+# This file lives in server/ — the Render service's Root Directory must be set
+# to `server` in the dashboard (same arrangement as selfie-attendance). No
+# `rootDir` key is set on purpose: Render would resolve it relative to the
+# repo root and this file is already inside server/.
+#
+# No secret values belong in this file. Everything marked sync: false is set
+# in the Render dashboard only.
+services:
+  - type: web
+    name: gmaps-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Supabase pooler (connection string) — owner pastes in dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Secret values are managed ONLY in the Render dashboard (sync: false).
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Only the mobile app talks to this API — no browser origins.
+      - key: CORS_ORIGINS
+        value: ""

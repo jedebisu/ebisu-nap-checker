@@ -4,6 +4,10 @@ android/
 .env
 *.keystore
 !debug.keystore
+app/keystore/gmaps-release.keystore
+app/keystore/.env
+app/apk/
+app/android/
 app/build/
 server/dist/
 apk/*.apk

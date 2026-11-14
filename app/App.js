@@ -13,6 +13,7 @@ function Root() {
   const [screen, setScreen] = useState('login'); // 'login' | 'register' | 'otp'
   const [otpEmail, setOtpEmail] = useState('');
   const [view, setView] = useState('dashboard'); // 'dashboard' | 'map'
+  const [focusNap, setFocusNap] = useState(null);
 
   if (loading) {
     return (
@@ -23,19 +24,26 @@ function Root() {
   }
 
   const handleLogout = () => {
+    setFocusNap(null);
     setView('dashboard');
     logout();
   };
 
   const handleGoHome = () => {
+    setFocusNap(null);
     setView('dashboard');
+  };
+
+  const handleOpenNapOnMap = (nap) => {
+    setFocusNap(nap);
+    setView('map');
   };
 
   if (user) {
     if (user.must_change_password) return <PasswordSetupScreen />;
     return view === 'map'
-      ? <NapMapScreen onGoHome={handleGoHome} />
-      : <DashboardScreen onOpenMap={() => setView('map')} onLogout={handleLogout} />;
+      ? <NapMapScreen onGoHome={handleGoHome} focusNap={focusNap} onFocusConsumed={() => setFocusNap(null)} />
+      : <DashboardScreen onOpenMap={() => setView('map')} onOpenNap={handleOpenNapOnMap} onLogout={handleLogout} />;
   }
 
   if (screen === 'register') {

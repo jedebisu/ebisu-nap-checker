@@ -65,7 +65,7 @@ const getMarkerColor = (vacantLines) => {
   return COLORS.green;
 };
 
-const NapMapScreen = ({ onGoHome }) => {
+const NapMapScreen = ({ onGoHome, focusNap, onFocusConsumed }) => {
   const { logout } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
@@ -430,6 +430,52 @@ const NapMapScreen = ({ onGoHome }) => {
     selectNap(nap);
     setShowList(false);
   };
+
+  // When navigated from Dashboard with a specific NAP, fly to it once ready.
+  useEffect(() => {
+    if (!focusNap) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    const focus = () => {
+      if (cancelled) return;
+      const c = parseCoordinate(focusNap.dp_nap_lat, focusNap.dp_nap_long);
+      if (!c) {
+        onFocusConsumed?.();
+        return;
+      }
+      if (!mapRef.current) {
+        if (attempts++ < 20) setTimeout(focus, 150);
+        else onFocusConsumed?.();
+        return;
+      }
+
+      // Ensure the target NAP is present in the displayed marker set.
+      setNearbyNaps((prev) => {
+        if (prev.some((n) => n.nap_id === focusNap.nap_id || (n.id && focusNap.id && n.id === focusNap.id))) return prev;
+        return [focusNap, ...prev];
+      });
+      setIsSearching(false);
+      setSearchResults([]);
+      setDroppedPin(null);
+      droppedPinRef.current = null;
+
+      mapRef.current.animateToRegion(
+        { ...c, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+        600
+      );
+      selectNap(focusNap);
+      setShowList(false);
+      onFocusConsumed?.();
+    };
+
+    // Small delay to let initial layout/map settle.
+    const t = setTimeout(focus, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [focusNap, onFocusConsumed, selectNap]);
 
   useEffect(() => {
     const dest = selectedNap ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long) : null;

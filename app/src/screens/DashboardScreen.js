@@ -11,7 +11,7 @@ const timeOfDay = () => {
   return 'Evening';
 };
 
-export default function DashboardScreen({ onOpenMap, onLogout }) {
+export default function DashboardScreen({ onOpenMap, onOpenNap, onLogout }) {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,15 +50,23 @@ export default function DashboardScreen({ onOpenMap, onLogout }) {
 
   const renderNewNapItem = ({ item: nap }) => {
     const color = nap.vacant_lines === 0 ? '#ef4444' : nap.vacant_lines <= 8 ? '#f59e0b' : '#22c55e';
-    const address = [nap.barangay_name, nap.city_name, nap.province_name].filter(Boolean).join(', ') || 'N/A';
     return (
-      <TouchableOpacity style={styles.newNapItem} onPress={() => { /* could navigate */ }}>
+      <TouchableOpacity
+        style={styles.newNapItem}
+        onPress={() => {
+          if (onOpenNap) onOpenNap(nap);
+          else if (onOpenMap) onOpenMap();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${nap.nap_id} on map`}
+      >
         <View style={[styles.colorDot, { backgroundColor: color }]} />
         <View style={styles.newNapContent}>
           <View style={styles.newNapTitleRow}>
             <Text style={styles.newNapTitle} numberOfLines={1}>{nap.nap_id}</Text>
             <StatusBadge status={nap.naps_status} />
-          </View>          <Text style={styles.newNapSubtitle} numberOfLines={1}>{nap.building_served || 'N/A'}</Text>
+          </View>
+          <Text style={styles.newNapSubtitle} numberOfLines={1}>{nap.building_served || 'N/A'}</Text>
           <Text style={styles.newNapMeta}>
             {nap.city_name || 'N/A'} · {nap.vacant_lines} of {nap.total_capacity} ports available
           </Text>

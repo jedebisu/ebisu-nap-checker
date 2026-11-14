@@ -183,33 +183,68 @@ router.get('/stats/summary', async (req, res) => {
   }
 });
 
-// Get NAPs that were inserted since a given snapshot id.
-// Called with no `since` param returns all known new NAPs since the last
-// completed import run; with `since=id` it narrows to rows with id > that value.
+// Get NAPs that are "new since the last database update".
+// - If `since` (numeric id) is provided, returns rows with id > since.
+// - Otherwise, returns NAPs created in the latest report/import batch,
+//   identified as rows whose created_at falls on the nap_report_date (or,
+//   if unavailable, the most recent created_at date in the table). This
+//   surfaces NAPs that were newly inserted (not present in previous data)
+//   in the most recent update.
 router.get('/new', async (req, res) => {
   try {
     const { since } = req.query;
-    const limit = parseInt(req.query.limit || '200', 10);
-    const threshold = since ? Math.max(parseInt(since, 10), 0) : (prevMaxNapId ?? 0);
+    const limit = Math.min(parseInt(req.query.limit || '500', 10) || 500, 2000);
 
-    const result = await pool.query(`
-      SELECT
-        id, nap_id, cabinet, location_type, building_served, floors_served,
-        working_lines, vacant_lines, total_capacity, cfs_region,
-        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
-        naps_status, olt_id, sell_status, updated_at,
-        CASE
-          WHEN vacant_lines = 0 THEN 'red'
-          WHEN vacant_lines <= 8 THEN 'yellow'
-          ELSE 'green'
-        END as marker_color
-      FROM naps
-      WHERE id > $1
-        AND dp_nap_lat BETWEEN 4 AND 21
-        AND dp_nap_long BETWEEN 116 AND 127
-      ORDER BY id
-      LIMIT $2
-    `, [threshold, limit]);
+    let result;
+    if (since !== undefined && since !== null && String(since).trim() !== '') {
+      const threshold = Math.max(parseInt(since, 10) || 0, 0);
+      result = await pool.query(`
+        SELECT
+          id, nap_id, cabinet, location_type, building_served, floors_served,
+          working_lines, vacant_lines, total_capacity, cfs_region,
+          city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
+          naps_status, olt_id, sell_status, updated_at,
+          CASE
+            WHEN vacant_lines = 0 THEN 'red'
+            WHEN vacant_lines <= 8 THEN 'yellow'
+            ELSE 'green'
+          END as marker_color
+        FROM naps
+        WHERE id > $1
+          AND dp_nap_lat BETWEEN 4 AND 21
+          AND dp_nap_long BETWEEN 116 AND 127
+        ORDER BY id
+        LIMIT $2
+      `, [threshold, limit]);
+    } else {
+      // "New in latest update": NAPs created on the report date (or on the
+      // most recent created_at day if report date is missing). created_at is
+      // set only on INSERT, so this identifies newly added NAPs.
+      result = await pool.query(`
+        WITH report_day AS (
+          SELECT COALESCE(
+            $1::date,
+            (SELECT MAX(created_at)::date FROM naps)
+          ) AS d
+        )
+        SELECT
+          n.id, n.nap_id, n.cabinet, n.location_type, n.building_served, n.floors_served,
+          n.working_lines, n.vacant_lines, n.total_capacity, n.cfs_region,
+          n.city_name, n.province_name, n.barangay_name, n.dp_nap_lat, n.dp_nap_long,
+          n.naps_status, n.olt_id, n.sell_status, n.updated_at,
+          CASE
+            WHEN n.vacant_lines = 0 THEN 'red'
+            WHEN n.vacant_lines <= 8 THEN 'yellow'
+            ELSE 'green'
+          END as marker_color
+        FROM naps n, report_day rd
+        WHERE n.created_at::date >= rd.d
+          AND n.dp_nap_lat BETWEEN 4 AND 21
+          AND n.dp_nap_long BETWEEN 116 AND 127
+        ORDER BY n.id
+        LIMIT $2
+      `, [napReportDate || null, limit]);
+    }
 
     res.json({ count: result.rows.length, naps: result.rows });
   } catch (error) {

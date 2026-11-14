@@ -27,7 +27,7 @@ export default function DashboardScreen({ onOpenMap, onLogout }) {
     const fetchNewNaps = async () => {
       setLoadingNew(true);
       try {
-        const response = await api.napsAPI.getNew({ limit: 200 });
+        const response = await api.napsAPI.getNew({ limit: 1000 });
         const naps = response?.naps || [];
         setNewNaps(naps);
         // If there are new NAPs since last import, auto-show the section.

@@ -180,7 +180,10 @@ router.get('/search', async (req, res) => {
     const searchTerm = `%${searchTrimmed}%`;
     const statusFilter = status ? ' AND naps_status = $5\n' : '';
 
-    // Pass 1: match on nap_id only (exact > prefix > contains)
+    // Pass 1: match on nap_id only (exact > prefix).
+    // Uses a prefix LIKE ('term%') so the expression index on UPPER(nap_id)
+    // can do an index range scan instead of a sequential scan over all rows.
+    // Contains searches ('%term%') fall through to Pass 2.
     const idResult = await pool.query(`
       SELECT
         id, nap_id, cabinet, location_type, building_served, floors_served,
@@ -198,12 +201,12 @@ router.get('/search', async (req, res) => {
           ELSE 2
         END as relevance
       FROM naps
-      WHERE UPPER(nap_id) LIKE UPPER($3)
+      WHERE UPPER(nap_id) LIKE UPPER($2)
         AND dp_nap_lat BETWEEN 4 AND 21
         AND dp_nap_long BETWEEN 116 AND 127
         ${statusFilter}ORDER BY relevance, nap_id
-      LIMIT $4
-    `, status ? [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit, status] : [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit]);
+      LIMIT $3
+    `, status ? [searchTrimmed, `${searchTrimmed}%`, limit, status] : [searchTrimmed, `${searchTrimmed}%`, limit]);
 
     if (idResult.rows.length > 0) {
       return res.json({

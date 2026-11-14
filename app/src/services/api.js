@@ -24,6 +24,25 @@ api.interceptors.request.use(
   }
 );
 
+// Response interceptor: on 401 (session expired/revoked), clear stored auth
+// so the app falls back to the login screen. This supports the
+// single-active-session safety net — if a user logs in on another device,
+// their current session is revoked and the next API call returns 401.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      try {
+        await AsyncStorage.removeItem('auth_token');
+        await AsyncStorage.removeItem('auth_user');
+      } catch (e) {
+        // Ignore storage errors
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const authAPI = {
   login: async (credentials) => {
     const response = await api.post('/auth/login', credentials);

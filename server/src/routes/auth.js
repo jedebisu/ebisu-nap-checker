@@ -83,7 +83,13 @@ router.post('/login', loginLimiter, async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    // Insert sessions row (mirrors EBISU's login tail).
+    // SINGLE-ACTIVE-SESSION safety net: revoke every existing session for this
+    // user before inserting the new one, so only one login can be active at a
+    // time.
+    await pool.query(
+      `DELETE FROM sessions WHERE user_id = $1`,
+      [user.id]
+    );
     await pool.query(
       `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
       [user.id, token]

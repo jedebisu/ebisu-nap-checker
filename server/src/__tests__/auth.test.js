@@ -183,6 +183,52 @@ describe('Auth Endpoints', () => {
     });
   });
 
+  describe('single-active-session safety net', () => {
+    it('revokes the previous session when a user logs in again', async () => {
+      const userResult = await insertTestUser('single-session@test.com', false);
+      const lookup = await pool.query(`SELECT email FROM users WHERE id = $1`, [userResult.rows[0].id]);
+      const email = lookup.rows[0].email;
+
+      // First login
+      const login1 = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password: 'TestPass1!' });
+      expect(login1.status).toBe(200);
+      const token1 = login1.body.token;
+
+      // Session row exists for token1
+      const s1 = await pool.query('SELECT COUNT(*)::int AS n FROM sessions WHERE token = $1', [token1]);
+      expect(s1.rows[0].n).toBe(1);
+
+      // Small delay to ensure JWTs have different iat claims
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // Second login — should revoke token1's session
+      const login2 = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password: 'TestPass1!' });
+      expect(login2.status).toBe(200);
+      const token2 = login2.body.token;
+
+      // Only one session row total for this user (single-active-session)
+      const total = await pool.query('SELECT COUNT(*)::int AS n FROM sessions WHERE user_id = $1', [userResult.rows[0].id]);
+      expect(total.rows[0].n).toBe(1);
+
+      // Old token is rejected by authenticateToken
+      const resp = await request(app)
+        .get('/api/naps/stats/summary')
+        .set('Authorization', `Bearer ${token1}`);
+      expect(resp.status).toBe(401);
+      expect(resp.body.error).toBe('Session expired');
+
+      // New token still works
+      const resp2 = await request(app)
+        .get('/api/naps/stats/summary')
+        .set('Authorization', `Bearer ${token2}`);
+      expect(resp2.status).toBe(200);
+    });
+  });
+
   describe('POST /api/auth/logout', () => {
     it('deletes the session row for the issued token', async () => {
       const userResult = await insertTestUser('logout@test.com', false);

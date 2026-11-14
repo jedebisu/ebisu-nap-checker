@@ -332,6 +332,12 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
 
       job.total = lines.length;
 
+      // Snapshot the pre-import high-water mark BEFORE any upsert runs, so
+      // that after the import completes, rows with id > this mark are the
+      // rows that were genuinely INSERTED (new) during this run.
+      const snapBefore = await pool.query('SELECT COALESCE(MAX(id),0)::int AS mx FROM naps');
+      const preImportMaxNapId = snapBefore.rows[0].mx;
+
       await client.query('BEGIN');
 
       for (let i = 1; i < lines.length; i++) {
@@ -359,12 +365,8 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
 
       await client.query('COMMIT');
 
-      // Record max nap id seen *before* this import so /naps/new can exclude
-      // rows already known on a prior run. We snapshot it right after commit
-      // because existing rows may have been updated (not inserted) during
-      // upsert; only rows with id > that pre-import high-water mark are new.
-      const snapBefore = await pool.query('SELECT COALESCE(MAX(id),0)::int AS mx FROM naps');
-      prevMaxNapId = snapBefore.rows[0].mx;
+      // /naps/new uses this high-water mark: rows with id > it are new.
+      prevMaxNapId = preImportMaxNapId;
 
       job.done = true;
       job.finishedAt = new Date().toISOString();

@@ -123,7 +123,7 @@ const insertTestNAPs = async () => {
 const cleanupTestData = async () => {
   const client = await pool.connect();
   try {
-    await client.query('DELETE FROM naps WHERE nap_id IN ($1, $2, $3)', ['NAP001', 'NAP002', 'NAP003']);
+    await client.query('DELETE FROM naps WHERE nap_id IN ($1, $2, $3, $4)', ['NAP001', 'NAP002', 'NAP003', 'NAP004']);
     await client.query(
       `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
       [NAPS_TEST_EMAIL]
@@ -198,6 +198,33 @@ describe('NAP Endpoints', () => {
       expect(res.status).toBe(200);
       expect(res.body.naps.length).toBe(1);
       expect(res.body.naps[0].naps_status).toBe('GOOD');
+    });
+
+    it('should return NAPs inserted after the given snapshot id', async () => {
+      const statsRes = await request(app)
+        .get('/api/naps/stats/summary')
+        .set('Authorization', `Bearer ${token}`);
+      expect(statsRes.status).toBe(200);
+      const since = statsRes.body.prev_max_nap_id;
+
+      // Insert a new NAP that should appear as "new" (id > snapshot).
+      const client = await pool.connect();
+      try {
+        await client.query(
+          `INSERT INTO naps (nap_id, city_name, province_name, dp_nap_lat, dp_nap_long, naps_status, vacant_lines, working_lines, total_capacity) ` +
+          `VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          ['NAP004', 'Cebu City', 'Cebu', 10.3132, 123.8862, 'In Service', 3, 10, 13]
+        );
+      } finally {
+        client.release();
+      }
+
+      const newRes = await request(app)
+        .get(`/api/naps/new?since=${since}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(newRes.status).toBe(200);
+      const found = newRes.body.naps.find((n) => n.nap_id === 'NAP004');
+      expect(found).toBeDefined();
     });
   });
 });

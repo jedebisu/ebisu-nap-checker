@@ -14,6 +14,22 @@ try {
   napReportDate = fs.readFileSync(napReportDatePath, 'utf-8').trim() || null;
 } catch (_) {}
 
+// In-memory tracker for the (slow) background NAP import.
+let napImportJob = { running: false, imported: 0, total: 0, done: false, error: null, startedAt: null, finishedAt: null };
+
+// Track the maximum NAP id seen at the last completed import. Used by
+// /naps/new to identify rows inserted *after* that snapshot, i.e. "new NAPs".
+// Initialized from DB on startup so the first client call is accurate even
+// if the server was restarted between imports.
+let prevMaxNapId = null;
+(async () => {
+  try {
+    const r = await pool.query('SELECT COALESCE(MAX(id),0)::int AS mx FROM naps');
+    prevMaxNapId = r.rows[0].mx;
+    console.log(`[naps] prevMaxNapId initialized to ${prevMaxNapId}`);
+  } catch (_) { /* table may not exist yet during early migration runs */ }
+})();
+
 // Get all NAPs (with optional filters)
 router.get('/', async (req, res) => {
   try {
@@ -160,10 +176,45 @@ router.get('/stats/summary', async (req, res) => {
       FROM naps
     `);
 
-    res.json({ ...result.rows[0], nap_report_date: napReportDate });
+    res.json({ ...result.rows[0], nap_report_date: napReportDate, prev_max_nap_id: prevMaxNapId });
   } catch (error) {
     console.error('Error fetching NAP stats:', error);
     res.status(500).json({ error: 'Failed to fetch NAP stats' });
+  }
+});
+
+// Get NAPs that were inserted since a given snapshot id.
+// Called with no `since` param returns all known new NAPs since the last
+// completed import run; with `since=id` it narrows to rows with id > that value.
+router.get('/new', async (req, res) => {
+  try {
+    const { since } = req.query;
+    const limit = parseInt(req.query.limit || '200', 10);
+    const threshold = since ? Math.max(parseInt(since, 10), 0) : (prevMaxNapId ?? 0);
+
+    const result = await pool.query(`
+      SELECT
+        id, nap_id, cabinet, location_type, building_served, floors_served,
+        working_lines, vacant_lines, total_capacity, cfs_region,
+        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
+        naps_status, olt_id, sell_status, updated_at,
+        CASE
+          WHEN vacant_lines = 0 THEN 'red'
+          WHEN vacant_lines <= 8 THEN 'yellow'
+          ELSE 'green'
+        END as marker_color
+      FROM naps
+      WHERE id > $1
+        AND dp_nap_lat BETWEEN 4 AND 21
+        AND dp_nap_long BETWEEN 116 AND 127
+      ORDER BY id
+      LIMIT $2
+    `, [threshold, limit]);
+
+    res.json({ count: result.rows.length, naps: result.rows });
+  } catch (error) {
+    console.error('Error fetching new NAPs:', error);
+    res.status(500).json({ error: 'Failed to fetch new NAPs' });
   }
 });
 
@@ -178,7 +229,7 @@ router.get('/search', async (req, res) => {
 
     const searchTrimmed = q.trim();
     const searchTerm = `%${searchTrimmed}%`;
-    const statusFilter = status ? ' AND naps_status = $5\n' : '';
+    const statusFilter = status ? ' AND naps_status = $4\n' : '';
 
     // Pass 1: match on nap_id only (exact > prefix).
     // Uses a prefix LIKE ('term%') so the expression index on UPPER(nap_id)
@@ -251,9 +302,6 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// In-memory tracker for the (slow) background NAP import.
-let napImportJob = { running: false, imported: 0, total: 0, done: false, error: null, startedAt: null, finishedAt: null };
-
 // Admin-only: re-import NAPs from the committed naps_export.csv.gz (upsert).
 router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
   if (napImportJob.running) {
@@ -310,9 +358,17 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
       }
 
       await client.query('COMMIT');
+
+      // Record max nap id seen *before* this import so /naps/new can exclude
+      // rows already known on a prior run. We snapshot it right after commit
+      // because existing rows may have been updated (not inserted) during
+      // upsert; only rows with id > that pre-import high-water mark are new.
+      const snapBefore = await pool.query('SELECT COALESCE(MAX(id),0)::int AS mx FROM naps');
+      prevMaxNapId = snapBefore.rows[0].mx;
+
       job.done = true;
       job.finishedAt = new Date().toISOString();
-      console.log(`NAP import complete: ${imported} rows`);
+      console.log(`NAP import complete: ${imported} rows (prevMaxNapId=${prevMaxNapId})`);
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (_) {}
       job.error = error.message;

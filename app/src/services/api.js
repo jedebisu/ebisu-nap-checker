@@ -96,6 +96,11 @@ export const napsAPI = {
     return response.data;
   },
 
+  getNew: async (params = {}) => {
+    const response = await api.get('/naps/new', { params });
+    return response.data;
+  },
+
   search: async (params = {}) => {
     const response = await api.get('/naps/search', { params });
     return response.data;

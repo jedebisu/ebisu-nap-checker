@@ -101,3 +101,14 @@ Scan otherwise clean — proceed.
   - app/src/services/api.js: Response interceptor clears AsyncStorage auth_token/auth_user on 401, so app falls back to login screen when a session is revoked.
   - server/src/__tests__/auth.test.js: Added single-active-session test (session count stays at 1, old token gets 401 Session expired, new token works).
   - All 59 tests pass across 8 suites. Export clean, APK built & released as v1.1.6.
+- Back-to-dashboard button + New NAPs listing (2026-11-14, v1.1.7 work-in-progress):
+  - App.js: Added handleGoHome; passes onGoHome to NapMapScreen.
+  - NapMapScreen.js: Accepts onGoHome prop; renders home button (home-outline icon) in header right, next to logout button.
+  - server/routes/naps.js: Added prevMaxNapId module-level tracker initialized from DB MAX(id) on startup; updated on each successful admin /import run.
+  - server/routes/naps.js: Added GET /api/naps/new endpoint — returns NAPs with id > threshold (default: prevMaxNapId) filtered to PH bounding box, limit 200.
+  - server/routes/naps.js: /stats/summary now returns prev_max_nap_id alongside stats.
+  - server/src/config/migrate-add-new-naps-tracking.js: Added migration for naps.prev_import_count column (applied to production).
+  - app/src/services/api.js: Added napsAPI.getNew() → GET /naps/new.
+  - app/src/screens/DashboardScreen.js: Added "NEW NAPS SINCE LAST UPDATE" collapsible section in the previously blank space below the stats card; fetches /naps/new, shows list of new NAPs with status badge, port availability; empty state when up-to-date.
+  - server/src/__tests__/naps.test.js: Added test 'should return NAPs inserted after the given snapshot id'.
+  - All 60 tests pass across 8 suites. Export clean. APK not yet rebuilt for v1.1.7.

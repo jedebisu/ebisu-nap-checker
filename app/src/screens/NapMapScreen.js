@@ -65,7 +65,7 @@ const getMarkerColor = (vacantLines) => {
   return COLORS.green;
 };
 
-const NapMapScreen = () => {
+const NapMapScreen = ({ onGoHome }) => {
   const { logout } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
@@ -664,17 +664,32 @@ const NapMapScreen = () => {
             <Text style={styles.headerTitle}>G-MAPS</Text>
             <Text style={styles.headerSubtitle}>NAP FACILITY MAP</Text>
           </View>
-          <TouchableOpacity
-            onPress={confirmLogout}
-            style={styles.logoutButton}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-            accessibilityHint="Log out of G-MAPS and return to the sign-in screen"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="log-out-outline" size={20} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            {onGoHome && (
+              <TouchableOpacity
+                onPress={onGoHome}
+                style={styles.homeButton}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Back to dashboard"
+                accessibilityHint="Return to the dashboard"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="home-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={confirmLogout}
+              style={styles.logoutButton}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              accessibilityHint="Log out of G-MAPS and return to the sign-in screen"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search bar */}
@@ -1015,6 +1030,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     flexShrink: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  homeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#003A6B',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   logoutButton: {
     width: 36,

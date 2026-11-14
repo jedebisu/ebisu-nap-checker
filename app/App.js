@@ -27,10 +27,14 @@ function Root() {
     logout();
   };
 
+  const handleGoHome = () => {
+    setView('dashboard');
+  };
+
   if (user) {
     if (user.must_change_password) return <PasswordSetupScreen />;
     return view === 'map'
-      ? <NapMapScreen />
+      ? <NapMapScreen onGoHome={handleGoHome} />
       : <DashboardScreen onOpenMap={() => setView('map')} onLogout={handleLogout} />;
   }
 

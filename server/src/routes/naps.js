@@ -25,10 +25,10 @@ async function forward(req, res) {
     if (!upstream.ok) {
       return res.status(502).json({ error: 'NAP_SERVICE_UNAVAILABLE' });
     }
-    res.json(await upstream.json());
+    res.json(await upstream.json()).set('Cache-Control', 'no-store, no-cache, must-revalidate');
   } catch (err) {
     console.error('NAP proxy failed:', err.message);
-    res.status(502).json({ error: 'NAP_SERVICE_UNAVAILABLE' });
+    res.status(502).json({ error: 'NAP_SERVICE_UNAVAILABLE' }).set('Cache-Control', 'no-store, no-cache, must-revalidate');
   } finally {
     clearTimeout(timer);
   }

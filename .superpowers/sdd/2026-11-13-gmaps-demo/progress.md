@@ -96,3 +96,8 @@ Scan otherwise clean — proceed.
   - helpers.js: added getNapStatusTextColor(); added STATUS_TINT map in StatusBadge
   - NapMapScreen COLORS: added greenTint, textDark, textMuted
   - All changes verified: export clean, APK built (91 MB), installed on emulator-5554, login screen renders with new design. Full device login flow blocked by emulator `input text` unreliability; API login verified via curl (tokens returned for demo1/demo2).
+- Single-active-session safety net for v1.1.6 (2026-11-14):
+  - server/src/routes/auth.js: On login, DELETE all existing sessions for the user_id before INSERTing the new session. Only one login active at a time per account.
+  - app/src/services/api.js: Response interceptor clears AsyncStorage auth_token/auth_user on 401, so app falls back to login screen when a session is revoked.
+  - server/src/__tests__/auth.test.js: Added single-active-session test (session count stays at 1, old token gets 401 Session expired, new token works).
+  - All 59 tests pass across 8 suites. Export clean, APK built & released as v1.1.6.

@@ -16,6 +16,7 @@ import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
   green: '#22c55e',
+  greenTint: '#dcfce7',
   yellow: '#f59e0b',
   red: '#ef4444',
   primary: '#00539B',
@@ -23,6 +24,8 @@ const COLORS = {
   gray: '#6b7280',
   lightGray: '#e5e7eb',
   pin: '#7c3aed',
+  textDark: '#111827',
+  textMuted: '#4b5563',
 };
 
 const RADIUS_KM = 1;
@@ -817,6 +820,7 @@ const NapMapScreen = () => {
           accessibilityRole="button"
           accessibilityLabel="My location"
           accessibilityHint="Clears any dropped pin and centers the map on your current location"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           {locating ? (
             <ActivityIndicator size="small" color={COLORS.primary} />
@@ -879,6 +883,7 @@ const NapMapScreen = () => {
           <TouchableOpacity 
             style={styles.closeButton}
             onPress={() => setSelectedNap(null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
@@ -927,14 +932,15 @@ const NapMapScreen = () => {
           </View>
 
           <View style={styles.portsGrid}>
-            <PortBox label="Total" value={selectedNap.total_capacity} color={COLORS.dark} />
-            <PortBox label="Working" value={selectedNap.working_lines} color={COLORS.green} />
-            <PortBox label="Available" value={selectedNap.vacant_lines} color={getMarkerColor(selectedNap.vacant_lines)} />
+            <PortBox label="Total" value={selectedNap.total_capacity} />
+            <PortBox label="Working" value={selectedNap.working_lines} />
+            <PortBox label="Available" value={selectedNap.vacant_lines} />
           </View>
 
           <TouchableOpacity
             onPress={() => setDetailsExpanded(false)}
             style={styles.collapseBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
           >
             <Text style={styles.collapseBtnText}>▼ Show less (see map)</Text>
           </TouchableOpacity>
@@ -972,9 +978,9 @@ const FieldRow = ({ label, value }) => (
   </Text>
 );
 
-const PortBox = ({ label, value, color }) => (
+const PortBox = ({ label, value }) => (
   <View style={styles.portBox}>
-    <Text style={[styles.portValue, { color }]}>{value}</Text>
+    <Text style={styles.portValue}>{value}</Text>
     <Text style={styles.portLabel}>{label}</Text>
   </View>
 );
@@ -1115,10 +1121,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listToggle: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: COLORS.primary,
-    borderRadius: 6,
+    borderRadius: 10,
   },
   listToggleText: {
     fontSize: 12,
@@ -1145,7 +1151,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 11,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
     fontWeight: '600',
   },
   chipTextActive: {
@@ -1180,9 +1186,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
     bottom: 96,
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1340,29 +1346,29 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 14,
     backgroundColor: '#f3f4f6',
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
   collapseBtnText: {
-    fontSize: 12,
-    color: COLORS.gray,
-    fontWeight: '600',
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: '700',
   },
   closeButton: {
     position: 'absolute',
     top: 12,
     right: 12,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.lightGray,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.textDark,
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeButtonText: {
-    fontSize: 14,
-    color: COLORS.gray,
+    fontSize: 16,
+    color: '#fff',
   },
   detailHeader: {
     flexDirection: 'row',
@@ -1422,6 +1428,7 @@ const styles = StyleSheet.create({
   portValue: {
     fontSize: 24,
     fontWeight: 'bold',
+    color: COLORS.textDark,
   },
   portLabel: {
     fontSize: 11,

@@ -94,6 +94,7 @@ export const NAP_STATUS_COLORS = {
 };
 
 export const getNapStatusColor = (status) => NAP_STATUS_COLORS[status] || '#6b7280';
+export const getNapStatusTextColor = () => '#111827';
 
 export const formatDateTime = (iso) => {
   if (!iso) return 'N/A';

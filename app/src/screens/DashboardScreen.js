@@ -50,14 +50,14 @@ export default function DashboardScreen({ onOpenMap, onLogout }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E5F0FA' },
-  hero: { paddingTop: 48, paddingHorizontal: 24, paddingBottom: 32, backgroundColor: '#003A6B', borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
-  greeting: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  card: { marginHorizontal: 24, marginTop: -20, backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, flexDirection: 'column', gap: 4 },
-  label: { color: '#00539B', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  value: { color: '#003A6B', fontSize: 20, fontWeight: '600' },
-  sub: { color: '#888', fontSize: 13 },
-  btn: { marginHorizontal: 24, marginTop: 32, backgroundColor: '#00539B', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
-  btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  logout: { alignSelf: 'flex-end', marginRight: 24, marginTop: 16, padding: 8 },
-  logoutText: { color: '#888', fontSize: 14 }
+  hero: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 28, backgroundColor: '#003A6B', borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  greeting: { color: '#fff', fontSize: 26, fontWeight: '800' },
+  card: { marginHorizontal: 24, marginTop: -20, backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, flexDirection: 'column', gap: 6 },
+  label: { color: '#00539B', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  value: { color: '#003A6B', fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  sub: { color: '#4b5563', fontSize: 14, fontWeight: '600' },
+  btn: { marginHorizontal: 24, marginTop: 28, backgroundColor: '#00539B', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  btnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  logout: { alignSelf: 'flex-end', marginRight: 24, marginTop: 16, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb' },
+  logoutText: { color: '#4b5563', fontSize: 14, fontWeight: '600' },
 });

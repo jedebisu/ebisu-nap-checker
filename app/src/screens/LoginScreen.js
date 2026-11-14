@@ -92,6 +92,7 @@ export default function LoginScreen({ onCreateAccount }) {
             </TouchableOpacity>
           </View>
           <Text style={styles.footer}>Secure NAP facility monitoring</Text>
+          <Text style={styles.byline}>By: EBISU - Jed Singson</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -134,4 +135,5 @@ const styles = StyleSheet.create({
   createAccountText: { fontSize: 14, color: '#6b7280' },
   createAccountLink: { color: '#00539B', fontWeight: '700' },
   footer: { textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 32, letterSpacing: 0.5 },
+  byline: { textAlign: 'center', color: '#6b7280', fontSize: 11, marginTop: 6, fontWeight: '500' },
 });

@@ -213,7 +213,7 @@ router.get('/new', async (req, res) => {
         WHERE id > $1
           AND dp_nap_lat BETWEEN 4 AND 21
           AND dp_nap_long BETWEEN 116 AND 127
-        ORDER BY id
+        ORDER BY nap_id
         LIMIT $2
       `, [threshold, limit]);
     } else {
@@ -241,7 +241,7 @@ router.get('/new', async (req, res) => {
         WHERE n.created_at::date >= rd.d
           AND n.dp_nap_lat BETWEEN 4 AND 21
           AND n.dp_nap_long BETWEEN 116 AND 127
-        ORDER BY n.id
+        ORDER BY n.nap_id
         LIMIT $2
       `, [napReportDate || null, limit]);
     }

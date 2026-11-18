@@ -4,6 +4,7 @@ process.env.ADMIN_TOKEN = 'test-admin-token-123';
 const request = require('supertest');
 const { app, pool } = require('../server');
 const bcrypt = require('bcryptjs');
+const emailService = require('../services/email');
 
 const ADMIN = 'test-admin-token-123';
 const WRONG = 'definitely-not-the-admin-token';
@@ -370,5 +371,88 @@ describe('DELETE /api/admin/users/:id', () => {
     // Blocked account must still exist.
     const stillThere = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
     expect(stillThere.rows).toHaveLength(1);
+  });
+});
+
+describe('POST /api/admin/users/:id/reset-password', () => {
+  const RESET_EMAIL = 'admin-test-reset@example.com';
+
+  beforeEach(() => {
+    emailService.clearSentEmails();
+  });
+
+  afterEach(async () => {
+    await pool.query(
+      `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+      [RESET_EMAIL]
+    );
+    await pool.query('DELETE FROM users WHERE email = $1', [RESET_EMAIL]);
+  });
+
+  it('emails a temp password, forces password change, and revokes sessions for a demo-managed user', async () => {
+    const id = await insertFixtureUser(RESET_EMAIL, 'gmaps-admin-test-reset@example.com');
+    await pool.query(
+      `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, 'admin-test-reset-session', NOW() + INTERVAL '1 hour')`,
+      [id]
+    );
+    const before = await pool.query(
+      'SELECT password_hash, must_change_password FROM users WHERE id = $1',
+      [id]
+    );
+
+    const res = await request(app)
+      .post(`/api/admin/users/${id}/reset-password`)
+      .set('Authorization', `Bearer ${ADMIN}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+
+    const after = await pool.query(
+      'SELECT password_hash, must_change_password, email FROM users WHERE id = $1',
+      [id]
+    );
+    expect(after.rows).toHaveLength(1);
+    expect(after.rows[0].must_change_password).toBe(true);
+    expect(after.rows[0].password_hash).not.toBe(before.rows[0].password_hash);
+
+    const sessions = await pool.query('SELECT id FROM sessions WHERE user_id = $1', [id]);
+    expect(sessions.rows).toHaveLength(0);
+
+    const sent = emailService.getSentEmails();
+    expect(sent.length).toBe(1);
+    expect(sent[0]).toEqual(
+      expect.objectContaining({ to: RESET_EMAIL, type: 'temp-password' })
+    );
+    expect(typeof sent[0].tempPassword).toBe('string');
+    expect(sent[0].tempPassword.length).toBeGreaterThan(0);
+    const matches = await bcrypt.compare(sent[0].tempPassword, after.rows[0].password_hash);
+    expect(matches).toBe(true);
+  });
+
+  it('returns 404 for legacy or unknown id', async () => {
+    const legacy = await pool.query('SELECT id FROM users WHERE email = $1', [LEGACY_EMAIL]);
+    expect(legacy.rows.length).toBeGreaterThan(0);
+    const beforeLegacy = await pool.query(
+      'SELECT password_hash, must_change_password FROM users WHERE id = $1',
+      [legacy.rows[0].id]
+    );
+
+    const legacyRes = await request(app)
+      .post(`/api/admin/users/${legacy.rows[0].id}/reset-password`)
+      .set('Authorization', `Bearer ${ADMIN}`);
+    expect(legacyRes.status).toBe(404);
+
+    const unknownRes = await request(app)
+      .post('/api/admin/users/99999999/reset-password')
+      .set('Authorization', `Bearer ${ADMIN}`);
+    expect(unknownRes.status).toBe(404);
+
+    const afterLegacy = await pool.query(
+      'SELECT password_hash, must_change_password FROM users WHERE id = $1',
+      [legacy.rows[0].id]
+    );
+    expect(afterLegacy.rows[0].password_hash).toBe(beforeLegacy.rows[0].password_hash);
+    expect(afterLegacy.rows[0].must_change_password).toBe(beforeLegacy.rows[0].must_change_password);
+    expect(emailService.getSentEmails()).toHaveLength(0);
   });
 });

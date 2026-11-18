@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI } from '../services/api';
+import { authAPI, setUnauthorizedHandler } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -11,6 +11,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     loadStoredAuth();
+    // Register a handler so that when any API call returns 401 (session
+    // revoked — e.g. admin password reset or single-active-session), the
+    // React auth state is cleared and the app falls back to the login screen.
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setToken(null);
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const loadStoredAuth = async () => {

@@ -28,6 +28,10 @@ api.interceptors.request.use(
 // so the app falls back to the login screen. This supports the
 // single-active-session safety net — if a user logs in on another device,
 // their current session is revoked and the next API call returns 401.
+// Also notify any registered auth-state listener so React state updates.
+let _onUnauthorized = null;
+export const setUnauthorizedHandler = (fn) => { _onUnauthorized = fn; };
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -37,6 +41,9 @@ api.interceptors.response.use(
         await AsyncStorage.removeItem('auth_user');
       } catch (e) {
         // Ignore storage errors
+      }
+      if (typeof _onUnauthorized === 'function') {
+        try { _onUnauthorized(); } catch (e) { /* ignore */ }
       }
     }
     return Promise.reject(error);

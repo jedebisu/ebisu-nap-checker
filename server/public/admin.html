@@ -680,7 +680,7 @@
         window.alert('Session expired — reconnect with your admin token.');
         return;
       }
-      if (!res.ok) {
+      if (res.status < 200 || res.status >= 300) {
         var errMsg = (res.body && res.body.error) || ('error ' + res.status);
         window.alert('Could not reset password: ' + errMsg);
         return;

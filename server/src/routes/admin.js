@@ -272,11 +272,13 @@ router.post('/users/:id/reset-password', async (req, res) => {
     await client.query('COMMIT');
     return res.json({ ok: true });
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Admin reset-password error:', error);
     return res.status(500).json({ error: 'Failed to reset password' });
   } finally {
-    client.release();
+    try {
+      client.release();
+    } catch (_) {}
   }
 });
 

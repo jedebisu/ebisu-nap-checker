@@ -455,4 +455,42 @@ describe('POST /api/admin/users/:id/reset-password', () => {
     expect(afterLegacy.rows[0].must_change_password).toBe(beforeLegacy.rows[0].must_change_password);
     expect(emailService.getSentEmails()).toHaveLength(0);
   });
+
+  it('returns 500 and leaves credentials/sessions unchanged when temp-password email send fails', async () => {
+    const id = await insertFixtureUser(RESET_EMAIL, 'gmaps-admin-test-reset@example.com');
+    await pool.query(
+      `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, 'admin-test-reset-session-fail', NOW() + INTERVAL '1 hour')`,
+      [id]
+    );
+    const before = await pool.query(
+      'SELECT password_hash, must_change_password FROM users WHERE id = $1',
+      [id]
+    );
+
+    const spy = jest
+      .spyOn(emailService, 'sendTempPasswordEmail')
+      .mockRejectedValueOnce(new Error('send failed'));
+
+    let res;
+    try {
+      res = await request(app)
+        .post(`/api/admin/users/${id}/reset-password`)
+        .set('Authorization', `Bearer ${ADMIN}`);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Failed to send temporary password email' });
+
+    const after = await pool.query(
+      'SELECT password_hash, must_change_password FROM users WHERE id = $1',
+      [id]
+    );
+    expect(after.rows[0].password_hash).toBe(before.rows[0].password_hash);
+    expect(after.rows[0].must_change_password).toBe(before.rows[0].must_change_password);
+
+    const sessions = await pool.query('SELECT id FROM sessions WHERE user_id = $1', [id]);
+    expect(sessions.rows.length).toBeGreaterThan(0);
+  });
 });

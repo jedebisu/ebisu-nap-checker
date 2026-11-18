@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { sendTempPasswordEmail } = require('../services/email');
+const email = require('../services/email');
 const { pool } = require('../config/database');
 
 const router = express.Router();
@@ -255,7 +255,7 @@ router.post('/users/:id/reset-password', async (req, res) => {
   }
 
   try {
-    await sendTempPasswordEmail(user.email, tempPassword);
+    await email.sendTempPasswordEmail(user.email, tempPassword);
   } catch (error) {
     console.error('Admin reset-password email error:', error.message);
     return res.status(500).json({ error: 'Failed to send temporary password email' });

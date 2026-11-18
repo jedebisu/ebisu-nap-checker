@@ -1,10 +1,25 @@
 const express = require('express');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { sendTempPasswordEmail } = require('../services/email');
 const { pool } = require('../config/database');
 
 const router = express.Router();
 
 const DEFAULT_MAX_USES = 10;
+
+// Resolve a user row if they are demo-managed (employee_id LIKE 'gmaps-%')
+// when the schema carries the column; otherwise every row is demo-managed.
+// Returns null when the id is unknown or not managed — never throws.
+const getUserIfDemoManaged = async (id) => {
+  const scoped = await hasEmployeeIdColumn();
+  const demoAnd = scoped ? `AND employee_id LIKE 'gmaps-%'` : '';
+  const result = await pool.query(
+    `SELECT id, email FROM users WHERE id = $1 ${demoAnd}`,
+    [id]
+  );
+  return result.rows[0] || null;
+};
 
 // POST /api/admin/invites — create a new invite code.
 // Body: { max_uses?, expires_at? }. max_uses defaults to 10. expires_at, when
@@ -205,6 +220,63 @@ router.post('/unlock', async (req, res) => {
   } catch (error) {
     console.error('Unlock user error:', error);
     res.status(500).json({ error: 'Failed to unlock user' });
+  }
+});
+
+// POST /api/admin/users/:id/reset-password — reset a demo-managed account:
+// email a temporary password, force password change on next login, and revoke
+// all sessions. Email is sent before mutating state so a delivery failure does
+// not leave the account inaccessible.
+router.post('/users/:id/reset-password', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(404).json({ error: 'Account not found or not managed' });
+  }
+
+  let user;
+  try {
+    user = await getUserIfDemoManaged(id);
+  } catch (error) {
+    console.error('Admin reset-password lookup error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+
+  if (!user) {
+    return res.status(404).json({ error: 'Account not found or not managed' });
+  }
+
+  const tempPassword = crypto.randomBytes(8).toString('base64url') + '!A1';
+  let passwordHash;
+  try {
+    passwordHash = await bcrypt.hash(tempPassword, 10);
+  } catch (error) {
+    console.error('Admin reset-password hash error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+
+  try {
+    await sendTempPasswordEmail(user.email, tempPassword);
+  } catch (error) {
+    console.error('Admin reset-password email error:', error.message);
+    return res.status(500).json({ error: 'Failed to send temporary password email' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2',
+      [passwordHash, id]
+    );
+    await client.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Admin reset-password error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  } finally {
+    client.release();
   }
 });
 

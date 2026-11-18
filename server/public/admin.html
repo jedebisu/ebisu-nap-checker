@@ -666,11 +666,16 @@
     }
   }
 
-  async function resetUser(id, label) {
+  async function resetUser(id, label, btn) {
     if (!adminToken || !id) return;
     if (!window.confirm('Reset password for ' + label + '?\n\nThey will be emailed a temporary password and signed out everywhere. Proceed?')) return;
+    var original = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Resetting…';
+    }
     try {
-      var res = await api('/api/admin/users/' + encodeURIComponent(id), { method: 'POST' });
+      var res = await api('/api/admin/users/' + encodeURIComponent(id) + '/reset-password', { method: 'POST' });
       if (res.status === 401) {
         window.alert('Session expired — reconnect with your admin token.');
         return;
@@ -683,6 +688,11 @@
       showToast('Temporary password emailed to ' + label + '. They must change it on next login.');
     } catch (_err) {
       window.alert('Network error — could not reset password.');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = original || 'Reset password';
+      }
     }
   }
 
@@ -722,7 +732,7 @@
     var resetBtn = e.target.closest('.reset-user-btn');
     if (resetBtn) {
       var tr = resetBtn.closest('tr');
-      resetUser(tr && tr.getAttribute('data-id'), tr && tr.querySelector('td:first-child') ? tr.querySelector('td:first-child').textContent : '');
+      resetUser(tr && tr.getAttribute('data-id'), tr && tr.querySelector('td:first-child') ? tr.querySelector('td:first-child').textContent : '', resetBtn);
       return;
     }
     var btn = e.target.closest('.delete-user-btn');

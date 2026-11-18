@@ -636,7 +636,10 @@
         '<td><span class="pill ' + (isActive ? 'active">Active' : 'suspended">Suspended') + '</span></td>' +
         '<td>' + escapeHtml(fmtDate(row.created_at)) + '</td>' +
         '<td>' + escapeHtml(row.records) + '</td>' +
-        '<td><button type="button" class="danger small delete-user-btn">Delete</button></td>';
+        '<td>' +
+          '<button type="button" class="small reset-user-btn">Reset password</button> ' +
+          '<button type="button" class="danger small delete-user-btn">Delete</button>' +
+        '</td>';
       tbody.appendChild(tr);
     });
   }
@@ -660,6 +663,26 @@
     } catch (_err) {
       setMsg('users-msg', 'Network error — could not load users.', 'bad');
       showToast('Network error — could not load users.');
+    }
+  }
+
+  async function resetUser(id, label) {
+    if (!adminToken || !id) return;
+    if (!window.confirm('Reset password for ' + label + '?\n\nThey will be emailed a temporary password and signed out everywhere. Proceed?')) return;
+    try {
+      var res = await api('/api/admin/users/' + encodeURIComponent(id), { method: 'POST' });
+      if (res.status === 401) {
+        window.alert('Session expired — reconnect with your admin token.');
+        return;
+      }
+      if (!res.ok) {
+        var errMsg = (res.body && res.body.error) || ('error ' + res.status);
+        window.alert('Could not reset password: ' + errMsg);
+        return;
+      }
+      showToast('Temporary password emailed to ' + label + '. They must change it on next login.');
+    } catch (_err) {
+      window.alert('Network error — could not reset password.');
     }
   }
 
@@ -696,6 +719,12 @@
   $('refresh-users-btn').addEventListener('click', loadUsers);
 
   document.querySelector('#users-table tbody').addEventListener('click', function (e) {
+    var resetBtn = e.target.closest('.reset-user-btn');
+    if (resetBtn) {
+      var tr = resetBtn.closest('tr');
+      resetUser(tr && tr.getAttribute('data-id'), tr && tr.querySelector('td:first-child') ? tr.querySelector('td:first-child').textContent : '');
+      return;
+    }
     var btn = e.target.closest('.delete-user-btn');
     if (!btn) return;
     var tr = btn.closest('tr');

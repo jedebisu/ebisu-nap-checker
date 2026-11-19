@@ -228,29 +228,62 @@ router.post('/register', async (req, res) => {
     // Use SELECT-then-INSERT/UPDATE instead of ON CONFLICT so this works
     // even if the unique index on registrations.email hasn't been applied
     // to the target database yet.
-    const existingReg = await pool.query(
-      `SELECT id FROM registrations WHERE email = $1`,
-      [email]
-    );
+    // Create or replace the registration for this email. Lockout state
+    // (otp_fail_count / lockout_tier / locked_until) is deliberately NOT
+    // reset here — re-registering must not bypass the lockout system,
+    // exactly like resend. New rows get the INSERT defaults (0, 0, NULL).
+    // Use SELECT-then-INSERT/UPDATE instead of ON CONFLICT so this works
+    // even if the unique index on registrations.email hasn't been applied
+    // to the target database yet.
+    let regWriteError = null;
+    try {
+      const existingReg = await pool.query(
+        `SELECT id FROM registrations WHERE email = $1`,
+        [email]
+      );
 
-    if (existingReg.rows.length > 0) {
-      await pool.query(
-        `UPDATE registrations SET
-           firstname = $1, lastname = $2, phone = $3, invite_code_id = $4,
-           otp_hash = $5, otp_expires_at = $6
-         WHERE email = $7`,
-        [firstname, lastname, phone, invite.id, otpHash, otpExpiresAt, email]
-      );
-    } else {
-      await pool.query(
-        `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)`,
-        [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
-      );
+      if (existingReg.rows.length > 0) {
+        await pool.query(
+          `UPDATE registrations SET
+             firstname = $1, lastname = $2, phone = $3, invite_code_id = $4,
+             otp_hash = $5, otp_expires_at = $6
+           WHERE email = $7`,
+          [firstname, lastname, phone, invite.id, otpHash, otpExpiresAt, email]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)`,
+          [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
+        );
+      }
+    } catch (dbError) {
+      regWriteError = dbError;
+    }
+
+    if (regWriteError) {
+      console.error('Registration DB error:', regWriteError);
+      return res.status(500).json({
+        error: 'Registration failed',
+        detail: regWriteError.message || String(regWriteError),
+      });
     }
 
     // Send OTP email via Resend (falls back to in-memory log under test).
-    await sendOtpEmail(email, otp);
+    let emailError = null;
+    try {
+      await sendOtpEmail(email, otp);
+    } catch (emailSendError) {
+      emailError = emailSendError;
+    }
+
+    if (emailError) {
+      console.error('Registration email error:', emailError);
+      return res.status(500).json({
+        error: 'Registration failed',
+        detail: emailError.message || String(emailError),
+      });
+    }
 
     res.json({ ok: true, message: `OTP sent to ${email}` });
   } catch (error) {

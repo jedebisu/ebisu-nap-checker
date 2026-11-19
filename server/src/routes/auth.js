@@ -225,18 +225,29 @@ router.post('/register', async (req, res) => {
     // (otp_fail_count / lockout_tier / locked_until) is deliberately NOT
     // reset here — re-registering must not bypass the lockout system,
     // exactly like resend. New rows get the INSERT defaults (0, 0, NULL).
-    await pool.query(
-      `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)
-       ON CONFLICT (email) DO UPDATE SET
-         firstname = EXCLUDED.firstname,
-         lastname = EXCLUDED.lastname,
-         phone = EXCLUDED.phone,
-         invite_code_id = EXCLUDED.invite_code_id,
-         otp_hash = EXCLUDED.otp_hash,
-         otp_expires_at = EXCLUDED.otp_expires_at`,
-      [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
+    // Use SELECT-then-INSERT/UPDATE instead of ON CONFLICT so this works
+    // even if the unique index on registrations.email hasn't been applied
+    // to the target database yet.
+    const existingReg = await pool.query(
+      `SELECT id FROM registrations WHERE email = $1`,
+      [email]
     );
+
+    if (existingReg.rows.length > 0) {
+      await pool.query(
+        `UPDATE registrations SET
+           firstname = $1, lastname = $2, phone = $3, invite_code_id = $4,
+           otp_hash = $5, otp_expires_at = $6
+         WHERE email = $7`,
+        [firstname, lastname, phone, invite.id, otpHash, otpExpiresAt, email]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO registrations (firstname, lastname, email, phone, invite_code_id, otp_hash, otp_expires_at, otp_fail_count, lockout_tier, locked_until)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, NULL)`,
+        [firstname, lastname, email, phone, invite.id, otpHash, otpExpiresAt]
+      );
+    }
 
     // Send OTP email via Resend (falls back to in-memory log under test).
     await sendOtpEmail(email, otp);
